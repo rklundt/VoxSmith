@@ -156,6 +156,15 @@ export class AudioEngine {
     return this._processedBuffer !== null
   }
 
+  /**
+   * Clears the Stage 1 processed buffer so the original plays directly.
+   * Called when the user resets Stage 1 params to defaults and clicks Apply —
+   * they want to "un-process" back to the raw recording.
+   */
+  clearProcessedBuffer(): void {
+    this._processedBuffer = null
+  }
+
   /** The original unprocessed buffer (needed for re-running Stage 1) */
   get originalBuffer(): AudioBuffer | null {
     return this._originalBuffer

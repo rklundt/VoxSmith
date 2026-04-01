@@ -33,13 +33,18 @@
  * - Tooltip text comes from src/shared/tooltips.ts (not hardcoded)
  */
 
-import React, { useCallback, useRef } from 'react'
-import { useEngineStore } from '../../stores/engineStore'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { useEngineStore, computeIsStale } from '../../stores/engineStore'
+import { DEFAULT_ENGINE_SNAPSHOT } from '../../../shared/constants'
+import { TOOLTIPS } from '../../../shared/tooltips'
 import { useAudioEngine } from '../../hooks/useAudioEngine'
 import { useStage1Processing } from '../../hooks/useStage1Processing'
 
 export function ControlPanel(): React.ReactElement {
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // File loading error — shown as a friendly popup in the UI
+  const [fileError, setFileError] = useState<string | null>(null)
 
   // ─── Store State ────────────────────────────────────────────────────
   const snapshot = useEngineStore((s) => s.snapshot)
@@ -49,8 +54,17 @@ export function ControlPanel(): React.ReactElement {
   const volume = useEngineStore((s) => s.volume)
   const stage1Status = useEngineStore((s) => s.stage1Status)
   const stage1Error = useEngineStore((s) => s.stage1Error)
-  const isStale = useEngineStore((s) => s.isStale)
+  const appliedStage1Params = useEngineStore((s) => s.appliedStage1Params)
   const updateParam = useEngineStore((s) => s.updateParam)
+
+  // Derive isStale directly from primitive values rather than reading the store's
+  // precomputed field. This guarantees reactivity: when the snapshot object changes
+  // (which it does on every slider move), this recomputes isStale in the same render.
+  // The store's isStale field is still maintained for other consumers.
+  const isStale = useMemo(
+    () => computeIsStale(snapshot, appliedStage1Params, hasProcessed),
+    [snapshot, appliedStage1Params, hasProcessed]
+  )
 
   // ─── Hooks ──────────────────────────────────────────────────────────
   const {
@@ -77,11 +91,14 @@ export function ControlPanel(): React.ReactElement {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setFileError(null)
     try {
       const arrayBuffer = await file.arrayBuffer()
       await loadFile(arrayBuffer)
       console.debug(`[ControlPanel] Loaded file: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`)
     } catch (err) {
+      const msg = `Could not load "${file.name}". The file may be invalid, corrupt, or in an unsupported format.`
+      setFileError(msg)
       console.error('[ControlPanel] Failed to load file:', err)
     }
 
@@ -98,15 +115,18 @@ export function ControlPanel(): React.ReactElement {
 
     // Only accept audio files
     if (!file.type.startsWith('audio/') && !file.name.match(/\.(wav|mp3|ogg|flac)$/i)) {
-      console.warn('[ControlPanel] Dropped file is not an audio file:', file.type)
+      setFileError(`"${file.name}" is not a supported audio file. Try WAV, MP3, OGG, or FLAC.`)
       return
     }
 
+    setFileError(null)
     try {
       const arrayBuffer = await file.arrayBuffer()
       await loadFile(arrayBuffer)
       console.debug(`[ControlPanel] Loaded dropped file: ${file.name}`)
     } catch (err) {
+      const msg = `Could not load "${file.name}". The file may be invalid, corrupt, or in an unsupported format.`
+      setFileError(msg)
       console.error('[ControlPanel] Failed to load dropped file:', err)
     }
   }, [loadFile])
@@ -155,6 +175,29 @@ export function ControlPanel(): React.ReactElement {
   const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setVolume(Number(e.target.value))
   }, [setVolume])
+
+  // ─── Reset Handlers ─────────────────────────────────────────────────
+  // Stage 1 reset: sets pitch/formant/speed back to defaults in the store.
+  // The user still needs to click Apply to re-process with the default values
+  // (or if all are at default, Apply will clear the processed buffer entirely).
+
+  const resetStage1 = useCallback(() => {
+    updateParam('pitch', DEFAULT_ENGINE_SNAPSHOT.pitch)
+    updateParam('formant', DEFAULT_ENGINE_SNAPSHOT.formant)
+    updateParam('speed', DEFAULT_ENGINE_SNAPSHOT.speed)
+  }, [updateParam])
+
+  // Stage 2 reset: sets high-pass/compressor back to defaults and immediately
+  // updates the engine nodes (no Apply needed — these are real-time effects).
+
+  const resetStage2 = useCallback(() => {
+    updateParam('highPassFrequency', DEFAULT_ENGINE_SNAPSHOT.highPassFrequency)
+    updateParam('compressorThreshold', DEFAULT_ENGINE_SNAPSHOT.compressorThreshold)
+    updateParam('compressorRatio', DEFAULT_ENGINE_SNAPSHOT.compressorRatio)
+    setHighPassFrequency(DEFAULT_ENGINE_SNAPSHOT.highPassFrequency)
+    setCompressorThreshold(DEFAULT_ENGINE_SNAPSHOT.compressorThreshold)
+    setCompressorRatio(DEFAULT_ENGINE_SNAPSHOT.compressorRatio)
+  }, [updateParam, setHighPassFrequency, setCompressorThreshold, setCompressorRatio])
 
   // ─── Render ─────────────────────────────────────────────────────────
 
@@ -210,6 +253,31 @@ export function ControlPanel(): React.ReactElement {
             </span>
           )}
         </div>
+
+        {/* File loading error — shown as a friendly popup in the UI */}
+        {fileError && (
+          <div style={{
+            background: '#3e0d0d',
+            border: '1px solid #c62828',
+            borderRadius: '6px',
+            padding: '10px 14px',
+            marginTop: '12px',
+            fontSize: '13px',
+            color: '#ef9a9a',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: '12px',
+          }}>
+            <span>{fileError}</span>
+            <span
+              onClick={() => setFileError(null)}
+              style={{ cursor: 'pointer', color: '#ef9a9a', fontWeight: 'bold', flexShrink: 0 }}
+            >
+              ✕
+            </span>
+          </div>
+        )}
       </section>
 
       {/* ─── Playback Controls ───────────────────────────────────────── */}
@@ -234,6 +302,7 @@ export function ControlPanel(): React.ReactElement {
           {/* Volume slider */}
           <label style={{ marginLeft: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px' }}>Volume</span>
+            <HelpTooltip detail={TOOLTIPS.volume.detail} pairsWith={TOOLTIPS.volume.pairsWith} />
             <input
               type="range"
               min="0"
@@ -256,6 +325,12 @@ export function ControlPanel(): React.ReactElement {
           Stage 1 — Pitch / Formant / Speed
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
             (offline — click Apply to process)
+          </span>
+          <span
+            onClick={resetStage1}
+            style={resetLinkStyle}
+          >
+            reset
           </span>
         </h2>
 
@@ -304,7 +379,9 @@ export function ControlPanel(): React.ReactElement {
           </div>
         )}
 
-        {/* Pitch slider: -24 to +24 semitones */}
+        {/* Pitch slider: -24 to +24 semitones.
+            Disabled during processing — Stage 1 params require offline processing,
+            so changing them mid-flight would be confusing. Re-enabled after completion. */}
         <SliderControl
           label="Pitch"
           value={snapshot.pitch}
@@ -312,19 +389,32 @@ export function ControlPanel(): React.ReactElement {
           max={24}
           step={1}
           unit="st"
+          tooltipKey="pitch"
+          disabled={isProcessing}
           onChange={handlePitchChange}
         />
 
-        {/* Formant slider: -2.0 to +2.0 octaves */}
+        {/* Formant slider: DISABLED for Sprint 2.
+            The two-pass Rubber Band CLI approach (shift everything → shift pitch back
+            with --formant preservation) introduces unacceptable artifacts.
+            Re-enabled in a future sprint when we integrate the Rubber Band C++ library
+            API directly via Node.js native addon — the API's setFormantScale() method
+            provides independent formant shifting in a single pass with no quality loss.
+            See docs/phasesAndSprints.md for the re-enablement user story. */}
         <SliderControl
           label="Formant"
           value={snapshot.formant}
-          min={-2}
-          max={2}
-          step={0.1}
+          min={-1}
+          max={1}
+          step={0.01}
           unit="oct"
+          tooltipKey="formant"
+          disabled={true}
           onChange={handleFormantChange}
         />
+        <div style={{ fontSize: '11px', color: '#666', marginTop: '-4px', marginBottom: '8px', marginLeft: '122px' }}>
+          Disabled — requires native Rubber Band library integration (future sprint)
+        </div>
 
         {/* Speed/tempo slider: 0.5x to 2.0x */}
         <SliderControl
@@ -334,6 +424,8 @@ export function ControlPanel(): React.ReactElement {
           max={2.0}
           step={0.05}
           unit="x"
+          tooltipKey="speed"
+          disabled={isProcessing}
           onChange={handleSpeedChange}
         />
 
@@ -370,6 +462,12 @@ export function ControlPanel(): React.ReactElement {
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
             (updates live)
           </span>
+          <span
+            onClick={resetStage2}
+            style={resetLinkStyle}
+          >
+            reset
+          </span>
         </h2>
 
         {/* High-Pass Filter */}
@@ -380,6 +478,7 @@ export function ControlPanel(): React.ReactElement {
           max={500}
           step={1}
           unit="Hz"
+          tooltipKey="highPass"
           onChange={handleHighPassChange}
         />
 
@@ -391,6 +490,7 @@ export function ControlPanel(): React.ReactElement {
           max={0}
           step={1}
           unit="dB"
+          tooltipKey="compressorThreshold"
           onChange={handleCompThresholdChange}
         />
 
@@ -402,15 +502,16 @@ export function ControlPanel(): React.ReactElement {
           max={20}
           step={0.5}
           unit=":1"
+          tooltipKey="compressorRatio"
           onChange={handleCompRatioChange}
         />
       </section>
 
       {/* ─── Debug Info ──────────────────────────────────────────────── */}
-      <section style={{ marginTop: '32px', fontSize: '11px', color: '#555' }}>
+      <section style={{ marginTop: '32px', fontSize: '11px', color: '#aaa' }}>
         <details>
-          <summary style={{ cursor: 'pointer' }}>Debug Info</summary>
-          <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '10px' }}>
+          <summary style={{ cursor: 'pointer', color: '#aaa' }}>Debug Info</summary>
+          <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '10px', color: '#ccc' }}>
 {JSON.stringify({
   hasFile,
   hasProcessed,
@@ -438,6 +539,92 @@ export function ControlPanel(): React.ReactElement {
 
 // ─── Sub-Components ─────────────────────────────────────────────────────────
 
+// ─── Tooltip Component ──────────────────────────────────────────────────────
+// Custom tooltip with ~200ms show delay (half of browser default ~400ms),
+// max-width constraint to prevent bleeding into other panels, and word wrap.
+
+interface HelpTooltipProps {
+  /** The full detail text to show */
+  detail: string
+  /** "Works well with" pairings */
+  pairsWith: string[]
+}
+
+/**
+ * A small "?" circle that shows a positioned tooltip on hover.
+ * Uses React state instead of native title for faster delay and controlled width.
+ */
+function HelpTooltip({ detail, pairsWith }: HelpTooltipProps): React.ReactElement {
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleMouseEnter = () => {
+    // ~200ms delay — half the default browser title delay (~400ms)
+    timerRef.current = setTimeout(() => setVisible(true), 200)
+  }
+
+  const handleMouseLeave = () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setVisible(false)
+  }
+
+  return (
+    <span
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}
+    >
+      {/* The "?" circle */}
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '14px',
+        height: '14px',
+        borderRadius: '50%',
+        border: '1px solid #555',
+        fontSize: '9px',
+        color: '#777',
+        cursor: 'help',
+      }}>
+        ?
+      </span>
+
+      {/* Tooltip popup — positioned below the "?" icon, anchored left
+          so it flows into the slider area and never overlaps the panel border */}
+      {visible && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '0px',
+          backgroundColor: '#1e2a3a',
+          border: '1px solid #3a4a5a',
+          borderRadius: '6px',
+          padding: '10px 12px',
+          fontSize: '12px',
+          lineHeight: '1.5',
+          color: '#d0d0d0',
+          // Constrain width so it stays within the panel area
+          width: '280px',
+          maxWidth: 'calc(100vw - 80px)',
+          whiteSpace: 'normal',
+          wordWrap: 'break-word',
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          pointerEvents: 'none',
+        }}>
+          <div style={{ marginBottom: '6px' }}>{detail}</div>
+          <div style={{ fontSize: '11px', color: '#8a9aaa' }}>
+            Works well with: {pairsWith.join(', ')}
+          </div>
+        </div>
+      )}
+    </span>
+  )
+}
+
+// ─── Slider Component ───────────────────────────────────────────────────────
+
 interface SliderControlProps {
   label: string
   value: number
@@ -445,24 +632,39 @@ interface SliderControlProps {
   max: number
   step: number
   unit: string
+  /** Key into TOOLTIPS object — if provided, shows tooltip on hover */
+  tooltipKey?: string
+  /** Whether the slider is disabled (e.g., during Stage 1 processing) */
+  disabled?: boolean
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
 }
 
 /**
- * A labeled slider with current value display.
+ * A labeled slider with current value display and optional tooltip.
+ *
+ * Tooltip behavior:
+ * - Hovering over the "?" icon shows detail text + pairings in a custom popup (~200ms delay)
+ * - Tooltip content is pulled from src/shared/tooltips.ts (single source of truth)
+ *
  * Simple inline component — will be replaced by a proper Knob/Slider control
  * component in Sprint 3 when the design system is built.
  */
-function SliderControl({ label, value, min, max, step, unit, onChange }: SliderControlProps): React.ReactElement {
+function SliderControl({ label, value, min, max, step, unit, tooltipKey, disabled, onChange }: SliderControlProps): React.ReactElement {
   // Format the display value based on the unit type
   const displayValue = unit === 'x' ? value.toFixed(2) :
-    unit === 'oct' ? value.toFixed(1) :
+    unit === 'oct' ? value.toFixed(2) :
     String(Math.round(value))
+
+  // Look up tooltip content if a key was provided
+  const tooltip = tooltipKey ? TOOLTIPS[tooltipKey] : undefined
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-      <label style={{ fontSize: '13px', minWidth: '110px', textAlign: 'right' }}>
+      <label style={{ fontSize: '13px', minWidth: '110px', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
         {label}
+        {tooltip && (
+          <HelpTooltip detail={tooltip.detail} pairsWith={tooltip.pairsWith} />
+        )}
       </label>
       <input
         type="range"
@@ -470,8 +672,9 @@ function SliderControl({ label, value, min, max, step, unit, onChange }: SliderC
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={onChange}
-        style={{ flex: 1, maxWidth: '300px' }}
+        style={{ flex: 1, maxWidth: '300px', opacity: disabled ? 0.4 : 1 }}
       />
       <span style={{ fontSize: '12px', color: '#aaa', minWidth: '60px' }}>
         {displayValue} {unit}
@@ -489,6 +692,16 @@ const sectionHeaderStyle: React.CSSProperties = {
   color: '#b0bec5',
   borderBottom: '1px solid #333',
   paddingBottom: '6px',
+}
+
+const resetLinkStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 'normal',
+  color: '#607d8b',
+  marginLeft: '12px',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  userSelect: 'none',
 }
 
 function buttonStyle(enabled: boolean): React.CSSProperties {

@@ -97,6 +97,17 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     poweredBy: 'Web Audio API (AudioBufferSourceNode)',
   },
 
+  volume: {
+    label: 'Volume',
+    short: 'Controls how loud the voice sounds during preview.',
+    detail:
+      'Adjusts the playback loudness before effects are applied. ' +
+      'This does not affect the exported audio file — it is only for monitoring. ' +
+      'If your speakers are quiet, turn this up instead of cranking system volume.',
+    pairsWith: ['Compression Threshold'],
+    poweredBy: 'Web Audio API (GainNode)',
+  },
+
   // ─── Advanced Controls ─────────────────────────────────────────────
 
   vibratoRate: {
