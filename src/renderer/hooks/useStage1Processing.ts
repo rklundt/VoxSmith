@@ -45,7 +45,7 @@ interface UseStage1ProcessingProps {
   /** Function to load the processed buffer into the AudioEngine */
   loadProcessedBuffer: (arrayBuffer: ArrayBuffer) => Promise<void>
   /** Function to get the AudioEngine instance (for reading originalBuffer) */
-  getEngine: () => { originalBuffer: AudioBuffer | null }
+  getEngine: () => { originalBuffer: AudioBuffer | null; hasProcessed: boolean; clearProcessedBuffer: () => void }
 }
 
 export function useStage1Processing({ loadProcessedBuffer, getEngine }: UseStage1ProcessingProps) {
@@ -70,8 +70,11 @@ export function useStage1Processing({ loadProcessedBuffer, getEngine }: UseStage
     const speed = snapshot.speed
 
     // If all Stage 1 params are at default, skip processing —
-    // just clear the processed buffer so the original plays directly
+    // clear the processed buffer so the original plays directly.
+    // This handles the "reset → Apply" flow: the user wants to revert
+    // to the unprocessed original without running Rubber Band.
     if (pitch === 0 && formant === 0 && speed === 1.0) {
+      engine.clearProcessedBuffer()
       store.resetStage1()
       return
     }
@@ -100,19 +103,21 @@ export function useStage1Processing({ loadProcessedBuffer, getEngine }: UseStage
         }
       }
 
-      // Build the IPC request
+      // Build the IPC request.
+      // Formant is stored in octaves (-2 to +2) in the UI but Rubber Band CLI
+      // uses semitones, so convert: 1 octave = 12 semitones.
+      const formantSemitones = formant * 12
+
       const request: AudioProcessRequest = {
         audioData: interleaved.buffer,
         sampleRate,
         channels: numChannels,
         pitch,
-        // preserveFormant is true whenever we're shifting formant OR pitch.
-        // The --formant flag tells Rubber Band to preserve the voice's natural
-        // resonant character independently of the pitch shift.
-        // Formant "shift" is achieved by combining pitch shift + formant preservation
-        // + an additional pitch offset. For Sprint 2, we always preserve formant
-        // when pitch is non-zero. Independent formant shift is a Sprint 3+ feature.
-        preserveFormant: pitch !== 0,
+        formantSemitones,
+        // preserveFormant is used in single-pass mode (formant=0, pitch!=0).
+        // When formant is non-zero, the two-pass pipeline handles formant
+        // positioning automatically and this flag is managed by processAudio().
+        preserveFormant: formantSemitones === 0 && pitch !== 0,
         tempo: speed,
       }
 

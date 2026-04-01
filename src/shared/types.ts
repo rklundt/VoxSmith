@@ -179,7 +179,13 @@ export interface AudioProcessRequest {
   channels: number
   /** Pitch shift in semitones (e.g. -12 = octave down, +12 = octave up) */
   pitch: number
-  /** Whether to preserve formants during pitch shift (the --formant flag) */
+  /** Formant shift in semitones (e.g. -24 = 2 octaves down, +24 = 2 octaves up).
+   *  Independent formant shifting requires a two-pass Rubber Band pipeline:
+   *  Pass 1 shifts everything by the formant amount (moves pitch + formants together),
+   *  Pass 2 shifts pitch back to the target with --formant preservation (formants stay shifted). */
+  formantSemitones: number
+  /** Whether to preserve formants during pitch shift (the --formant flag).
+   *  Used in single-pass mode when only pitch is changed (no formant shift). */
   preserveFormant: boolean
   /** Tempo ratio (1.0 = no change, 0.5 = half speed, 2.0 = double speed) */
   tempo: number

@@ -123,13 +123,29 @@ interface EngineState {
 /**
  * Computes whether the preview is stale by comparing current Stage 1 params
  * against the last applied params. Returns true if any param has changed.
+ *
+ * Also considers the case where a processed buffer exists but all params are
+ * back to defaults — the user reset and wants to "un-process" via Apply.
  */
-function computeIsStale(snapshot: EngineSnapshot, applied: AppliedStage1Params | null): boolean {
+export function computeIsStale(
+  snapshot: EngineSnapshot,
+  applied: AppliedStage1Params | null,
+  hasProcessed: boolean
+): boolean {
   if (!applied) {
-    // No processing has been applied yet — stale if any Stage 1 param is non-default.
+    // No processing has been applied yet — stale if any Stage 1 param is non-default
     // (i.e., pitch !== 0, formant !== 0, or speed !== 1.0)
     return snapshot.pitch !== 0 || snapshot.formant !== 0 || snapshot.speed !== 1.0
   }
+
+  const paramsAtDefaults = snapshot.pitch === 0 && snapshot.formant === 0 && snapshot.speed === 1.0
+
+  // If a processed buffer exists but params are back to defaults, that's stale —
+  // the user reset and needs to Apply to revert to the original unprocessed audio.
+  if (paramsAtDefaults && hasProcessed) {
+    return true
+  }
+
   // Compare current dialed-in values against what was last processed
   return (
     snapshot.pitch !== applied.pitch ||
@@ -153,14 +169,15 @@ export const useEngineStore = create<EngineState>((set, get) => ({
 
   setSnapshot: (snapshot) => set({
     snapshot,
-    isStale: computeIsStale(snapshot, get().appliedStage1Params),
+    isStale: computeIsStale(snapshot, get().appliedStage1Params, get().hasProcessed),
   }),
 
   updateParam: (key, value) => {
     const newSnapshot = { ...get().snapshot, [key]: value }
+    const stale = computeIsStale(newSnapshot, get().appliedStage1Params, get().hasProcessed)
     set({
       snapshot: newSnapshot,
-      isStale: computeIsStale(newSnapshot, get().appliedStage1Params),
+      isStale: stale,
     })
   },
 

@@ -82,6 +82,18 @@ These are always visible. They have the biggest impact on how different a charac
 
 ---
 
+### Volume
+
+**What it does:** Controls how loud the voice sounds during preview playback. This adjusts the monitoring level before effects are applied.
+
+**Important:** This does not affect the exported audio file. It is only for monitoring while you work. If your speakers are quiet, turn this up instead of cranking your system volume.
+
+**Works well with:** Compression Threshold. If you boost volume and hear clipping, lower the compression threshold to tame peaks.
+
+**Powered by:** Web Audio API (GainNode)
+
+---
+
 ## Advanced Controls
 
 Click the **Advanced** toggle to reveal these. They add texture, personality, and detail to a character voice.

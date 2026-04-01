@@ -57,7 +57,13 @@ import { getRubberbandPath } from './binaryPath'
  *
  * The renderer sends audio as a flat Float32Array packed into an ArrayBuffer.
  * WAV files need a 44-byte header with format metadata, followed by the PCM data.
- * We write 16-bit PCM because rubberband CLI handles it reliably.
+ * We write 32-bit IEEE float WAV (format code 3) to avoid quantization
+ * artifacts. The old 16-bit PCM approach introduced audible quality loss,
+ * especially when the two-pass formant shifting pipeline runs — each pass
+ * would compound the 16-bit quantization noise, causing a "robotic" sound.
+ * 32-bit float preserves the full precision of the original AudioBuffer data.
+ *
+ * Rubber Band CLI reads WAV via libsndfile, which supports 32-bit float natively.
  *
  * @param filePath — Where to write the WAV file
  * @param audioData — Raw audio data as ArrayBuffer (Float32 interleaved samples)
@@ -68,19 +74,13 @@ function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: numb
   const float32 = new Float32Array(audioData)
   const numSamples = float32.length
 
-  // Convert Float32 [-1.0, 1.0] to Int16 [-32768, 32767] for WAV
-  const int16 = new Int16Array(numSamples)
-  for (let i = 0; i < numSamples; i++) {
-    // Clamp to [-1, 1] to prevent overflow, then scale to Int16 range
-    const clamped = Math.max(-1, Math.min(1, float32[i]))
-    int16[i] = clamped < 0 ? clamped * 32768 : clamped * 32767
-  }
+  // 32-bit float: 4 bytes per sample, no conversion needed — Float32 data goes directly
+  const bytesPerSample = 4
+  const byteRate = sampleRate * channels * bytesPerSample
+  const blockAlign = channels * bytesPerSample
+  const dataSize = numSamples * bytesPerSample
 
-  const byteRate = sampleRate * channels * 2  // 2 bytes per sample (16-bit)
-  const blockAlign = channels * 2
-  const dataSize = int16.length * 2  // 2 bytes per Int16 sample
-
-  // WAV header is always 44 bytes for PCM format
+  // WAV header is always 44 bytes for standard formats
   const header = Buffer.alloc(44)
 
   // RIFF chunk descriptor
@@ -90,20 +90,21 @@ function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: numb
 
   // "fmt " sub-chunk — describes the audio format
   header.write('fmt ', 12)                       // Subchunk1ID
-  header.writeUInt32LE(16, 16)                   // Subchunk1Size (16 for PCM)
-  header.writeUInt16LE(1, 20)                    // AudioFormat (1 = PCM, no compression)
+  header.writeUInt32LE(16, 16)                   // Subchunk1Size (16 for PCM/float)
+  header.writeUInt16LE(3, 20)                    // AudioFormat (3 = IEEE float)
   header.writeUInt16LE(channels, 22)             // NumChannels
   header.writeUInt32LE(sampleRate, 24)           // SampleRate
   header.writeUInt32LE(byteRate, 28)             // ByteRate
   header.writeUInt16LE(blockAlign, 32)           // BlockAlign
-  header.writeUInt16LE(16, 34)                   // BitsPerSample (16-bit)
+  header.writeUInt16LE(32, 34)                   // BitsPerSample (32-bit float)
 
   // "data" sub-chunk — contains the actual audio samples
   header.write('data', 36)                       // Subchunk2ID
   header.writeUInt32LE(dataSize, 40)             // Subchunk2Size
 
-  // Write header + PCM data to file
-  const dataBuffer = Buffer.from(int16.buffer)
+  // Write header + Float32 data directly — no quantization conversion needed.
+  // The Float32Array's underlying buffer is the raw IEEE 754 bytes.
+  const dataBuffer = Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength)
   const fileBuffer = Buffer.concat([header, dataBuffer])
   fs.writeFileSync(filePath, fileBuffer)
 }
@@ -156,50 +157,51 @@ function getWavDuration(filePath: string): number {
 let activeProcess: ChildProcess | null = null
 
 /**
- * Builds the Rubber Band CLI command arguments.
+ * Spawns the Rubber Band CLI with the given arguments and waits for completion.
  *
- * Rubber Band CLI syntax:
- *   rubberband [options] input.wav output.wav
- *
- * Key flags for VoxSmith:
- *   --pitch N     Pitch shift in semitones (positive = up, negative = down)
- *   --formant     Preserve formants during pitch shift (THE critical flag)
- *   --tempo N     Time-stretch ratio (1.0 = no change)
- *   --fine        Higher quality processing (acceptable for offline use)
- *
- * @param request — The audio processing parameters from the renderer
- * @param inputPath — Path to the temp input WAV
- * @param outputPath — Path where the processed WAV will be written
- * @returns Array of CLI arguments
+ * @param rubberbandPath — Resolved path to the rubberband executable
+ * @param args — CLI arguments (flags + input/output paths)
+ * @param logger — Winston logger
+ * @returns Exit code from the CLI process
+ * @throws Error if the process is killed (cancelled) or fails to spawn
  */
-function buildArgs(request: AudioProcessRequest, inputPath: string, outputPath: string): string[] {
-  const args: string[] = []
+function runRubberband(
+  rubberbandPath: string,
+  args: string[],
+  logger: Logger
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    const proc = spawn(rubberbandPath, args, {
+      // Pipe stderr so we can log any warnings/errors from the CLI
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
 
-  // Pitch shift in semitones
-  if (request.pitch !== 0) {
-    args.push('--pitch', request.pitch.toString())
-  }
+    activeProcess = proc
 
-  // Formant preservation — this is the flag rubberband-web couldn't provide.
-  // When enabled, pitch-shifting no longer causes the "chipmunk effect" because
-  // the resonant character of the voice (formants) is preserved independently.
-  if (request.preserveFormant) {
-    args.push('--formant')
-  }
+    let stderr = ''
 
-  // Tempo/time-stretch ratio
-  if (request.tempo !== 1.0) {
-    args.push('--tempo', request.tempo.toString())
-  }
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString()
+    })
 
-  // High quality mode — slightly slower but produces cleaner output.
-  // Acceptable for offline processing where latency doesn't matter.
-  args.push('--fine')
+    proc.on('close', (code) => {
+      activeProcess = null
+      if (code === null) {
+        // Process was killed (cancelled by user)
+        reject(new Error('Processing cancelled'))
+      } else {
+        if (stderr.trim()) {
+          logger.debug(`Rubber Band CLI stderr: ${stderr.trim()}`)
+        }
+        resolve(code)
+      }
+    })
 
-  // Input and output file paths (positional arguments, must come last)
-  args.push(inputPath, outputPath)
-
-  return args
+    proc.on('error', (err) => {
+      activeProcess = null
+      reject(err)
+    })
+  })
 }
 
 /**
@@ -207,6 +209,34 @@ function buildArgs(request: AudioProcessRequest, inputPath: string, outputPath: 
  *
  * This is the main entry point called by the IPC handler.
  * It handles the full lifecycle: write temp → spawn CLI → read output → cleanup.
+ *
+ * PROCESSING MODES:
+ *
+ * 1. SINGLE-PASS (no formant shift):
+ *    When formantSemitones === 0, a single Rubber Band invocation handles
+ *    pitch and/or tempo changes. If pitch is non-zero, --formant preserves
+ *    the natural voice timbre (no chipmunk effect).
+ *
+ *    Command: rubberband --pitch P --formant --tempo T --fine in.wav out.wav
+ *
+ * 2. TWO-PASS (with formant shift):
+ *    Independent formant shifting is not a native Rubber Band CLI feature.
+ *    We achieve it with two sequential passes:
+ *
+ *    Pass 1: Shift everything by the formant amount (pitch + formants move together).
+ *      Command: rubberband --pitch F [--tempo T] --fine in.wav mid.wav
+ *
+ *    Pass 2: Shift pitch back to the target with --formant preservation.
+ *      The --formant flag locks formants at their current (shifted) position
+ *      while the pitch moves to (P - F) semitones relative to pass 1 output.
+ *      Net result: pitch = P, formants shifted by F from original.
+ *      Command: rubberband --pitch (P - F) --formant --fine mid.wav out.wav
+ *
+ *    WHY THIS WORKS:
+ *    - After pass 1: pitch = original + F, formants = original + F
+ *    - After pass 2 with --formant: pitch = (original + F) + (P - F) = original + P
+ *      formants preserved at (original + F) → net formant shift of F semitones
+ *    - Tempo is applied only in pass 1 to avoid double time-stretching
  *
  * @param request — Audio data and processing parameters from the renderer
  * @param logger — Winston logger for diagnostics
@@ -222,6 +252,8 @@ export async function processAudio(
   const tempDir = os.tmpdir()
   const inputPath = path.join(tempDir, `voxsmith-input-${timestamp}-${random}.wav`)
   const outputPath = path.join(tempDir, `voxsmith-output-${timestamp}-${random}.wav`)
+  // Intermediate file used only in two-pass mode (formant shifting)
+  const midPath = path.join(tempDir, `voxsmith-mid-${timestamp}-${random}.wav`)
 
   let rubberbandPath: string
   try {
@@ -232,91 +264,140 @@ export async function processAudio(
     return { success: false, error: errorMsg }
   }
 
-  // Build the command string for logging before we start
-  const args = buildArgs(request, inputPath, outputPath)
-  const commandString = `${rubberbandPath} ${args.join(' ')}`
-  logger.debug(`Stage 1 processing: ${commandString}`)
+  // Determine whether we need single-pass or two-pass processing
+  const needsFormantShift = request.formantSemitones !== 0
+  const commandStrings: string[] = []
 
   try {
-    // Step 1: Write the input audio to a temp WAV file
+    // Write the input audio to a temp WAV file
     logger.debug(`Writing temp input WAV: ${inputPath} (${request.audioData.byteLength} bytes, ${request.sampleRate}Hz, ${request.channels}ch)`)
     writeWavFile(inputPath, request.audioData, request.sampleRate, request.channels)
 
-    // Step 2: Spawn the Rubber Band CLI and wait for it to complete
-    const exitCode = await new Promise<number>((resolve, reject) => {
-      const proc = spawn(rubberbandPath, args, {
-        // Pipe stderr so we can log any warnings/errors from the CLI
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
+    if (needsFormantShift) {
+      // ─── TWO-PASS MODE: Independent Formant Shifting ──────────────────
+      //
+      // Pass 1: Shift pitch by formant amount (moves both pitch and formants).
+      // Tempo is applied here to avoid double time-stretching in pass 2.
+      const pass1Args: string[] = []
+      pass1Args.push('--pitch', request.formantSemitones.toString())
+      if (request.tempo !== 1.0) {
+        pass1Args.push('--tempo', request.tempo.toString())
+      }
+      pass1Args.push('--fine')
+      pass1Args.push(inputPath, midPath)
 
-      activeProcess = proc
+      const pass1Cmd = `${rubberbandPath} ${pass1Args.join(' ')}`
+      commandStrings.push(pass1Cmd)
+      logger.debug(`Stage 1 pass 1 (formant shift): ${pass1Cmd}`)
 
-      let stderr = ''
-
-      proc.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString()
-      })
-
-      proc.on('close', (code) => {
-        activeProcess = null
-        if (code === null) {
-          // Process was killed (cancelled by user)
-          reject(new Error('Processing cancelled'))
-        } else {
-          if (stderr.trim()) {
-            logger.debug(`Rubber Band CLI stderr: ${stderr.trim()}`)
-          }
-          resolve(code)
+      const exitCode1 = await runRubberband(rubberbandPath, pass1Args, logger)
+      if (exitCode1 !== 0) {
+        logger.error(`Rubber Band CLI pass 1 exited with code ${exitCode1}: ${pass1Cmd}`)
+        return {
+          success: false,
+          error: `Rubber Band CLI exited with code ${exitCode1} (formant shift pass)`,
+          commandString: pass1Cmd,
         }
-      })
+      }
 
-      proc.on('error', (err) => {
-        activeProcess = null
-        reject(err)
-      })
-    })
+      // Pass 2: Shift pitch to the final target with --formant preservation.
+      // This moves the pitch from (original + F) to (original + P) while
+      // keeping formants locked at their shifted position (original + F).
+      // The pitch delta for pass 2 is (P - F) semitones.
+      const pass2PitchDelta = request.pitch - request.formantSemitones
+      const pass2Args: string[] = []
+      pass2Args.push('--pitch', pass2PitchDelta.toString())
+      pass2Args.push('--formant')
+      pass2Args.push('--fine')
+      pass2Args.push(midPath, outputPath)
 
-    if (exitCode !== 0) {
-      logger.error(`Rubber Band CLI exited with code ${exitCode}: ${commandString}`)
-      return {
-        success: false,
-        error: `Rubber Band CLI exited with code ${exitCode}`,
-        commandString,
+      const pass2Cmd = `${rubberbandPath} ${pass2Args.join(' ')}`
+      commandStrings.push(pass2Cmd)
+      logger.debug(`Stage 1 pass 2 (pitch correction + formant lock): ${pass2Cmd}`)
+
+      const exitCode2 = await runRubberband(rubberbandPath, pass2Args, logger)
+      if (exitCode2 !== 0) {
+        logger.error(`Rubber Band CLI pass 2 exited with code ${exitCode2}: ${pass2Cmd}`)
+        return {
+          success: false,
+          error: `Rubber Band CLI exited with code ${exitCode2} (pitch correction pass)`,
+          commandString: commandStrings.join(' → '),
+        }
+      }
+    } else {
+      // ─── SINGLE-PASS MODE: Pitch/Tempo Only (no formant shift) ────────
+      const args: string[] = []
+
+      // Pitch shift in semitones
+      if (request.pitch !== 0) {
+        args.push('--pitch', request.pitch.toString())
+      }
+
+      // Formant preservation — prevents the "chipmunk effect" when pitch-shifting.
+      // The --formant flag keeps the voice's resonant character (formants) at the
+      // original position while only the pitch changes.
+      if (request.preserveFormant) {
+        args.push('--formant')
+      }
+
+      // Tempo/time-stretch ratio
+      if (request.tempo !== 1.0) {
+        args.push('--tempo', request.tempo.toString())
+      }
+
+      // High quality mode — slightly slower but cleaner output.
+      args.push('--fine')
+
+      // Input and output file paths (positional arguments, must come last)
+      args.push(inputPath, outputPath)
+
+      const commandString = `${rubberbandPath} ${args.join(' ')}`
+      commandStrings.push(commandString)
+      logger.debug(`Stage 1 processing (single-pass): ${commandString}`)
+
+      const exitCode = await runRubberband(rubberbandPath, args, logger)
+      if (exitCode !== 0) {
+        logger.error(`Rubber Band CLI exited with code ${exitCode}: ${commandString}`)
+        return {
+          success: false,
+          error: `Rubber Band CLI exited with code ${exitCode}`,
+          commandString,
+        }
       }
     }
 
-    // Step 3: Read the processed output WAV
+    // Read the processed output WAV
     if (!fs.existsSync(outputPath)) {
       logger.error(`Rubber Band CLI did not produce output file: ${outputPath}`)
       return {
         success: false,
         error: 'Processing completed but output file was not created',
-        commandString,
+        commandString: commandStrings.join(' → '),
       }
     }
 
     const processedData = readWavFileAsArrayBuffer(outputPath)
     const durationSeconds = getWavDuration(outputPath)
 
-    logger.info(`Stage 1 processing complete: pitch=${request.pitch}, formant=${request.preserveFormant}, tempo=${request.tempo}, duration=${durationSeconds.toFixed(2)}s`)
+    logger.info(`Stage 1 processing complete: pitch=${request.pitch}st, formant=${request.formantSemitones}st, tempo=${request.tempo}x, passes=${needsFormantShift ? 2 : 1}, duration=${durationSeconds.toFixed(2)}s`)
 
     return {
       success: true,
       processedData,
       durationSeconds,
-      commandString,
+      commandString: commandStrings.join(' → '),
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
     logger.error(`Stage 1 processing failed: ${errorMsg}`)
-    return { success: false, error: errorMsg, commandString }
+    return { success: false, error: errorMsg, commandString: commandStrings.join(' → ') }
   } finally {
-    // Step 4: Clean up temp files — runs even if processing fails or is cancelled
-    if (fs.existsSync(inputPath)) {
-      try { fs.unlinkSync(inputPath) } catch { /* best effort cleanup */ }
-    }
-    if (fs.existsSync(outputPath)) {
-      try { fs.unlinkSync(outputPath) } catch { /* best effort cleanup */ }
+    // Clean up ALL temp files — runs even if processing fails or is cancelled.
+    // In two-pass mode, there's an additional intermediate file to clean up.
+    for (const tempFile of [inputPath, midPath, outputPath]) {
+      if (fs.existsSync(tempFile)) {
+        try { fs.unlinkSync(tempFile) } catch { /* best effort cleanup */ }
+      }
     }
     logger.debug('Stage 1 temp files cleaned up')
   }

@@ -360,6 +360,7 @@ VoxSmith uses sprint-based semantic versioning:
 | Desktop framework | Electron | Single codebase, WASM/Web Audio API ecosystem, familiar TS stack |
 | Audio processing location | Renderer process | Web Audio API, Tone.js, WaveSurfer.js, Rubber Band WASM all require browser context |
 | Formant shifting | Rubber Band CLI (native binary) | rubberband-web WASM lacks formant API, broken real-time tempo, buffer overruns — native CLI solves all three |
+| Formant shift disabled (Sprint 2) | Deferred to Sprint 3 | CLI `--formant` flag only preserves formants (boolean), cannot shift them. Two-pass CLI workaround (shift + shift-back with --formant) produces robotic artifacts. Sprint 3 will integrate Rubber Band C++ library API via native addon for single-pass `setFormantScale()` |
 | Formant fallback | SoundTouch WASM | No longer planned — native Rubber Band CLI provides full formant control |
 | Processing pipeline | Three-stage (offline → real-time → export) | Pitch/formant/tempo offline via Rubber Band CLI; EQ/reverb/etc real-time via Web Audio; export via FFmpeg |
 | File export pipeline | FFmpeg (bundled) | Handles noise gate, normalization, bit depth, silence padding reliably |

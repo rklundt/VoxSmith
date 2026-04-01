@@ -133,22 +133,29 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can import a WAV file by drag-and-drop or file browser so that I have audio to work with
 - As a user, I can play back my imported audio through the real-time effects chain so that I can hear the processed result
 - As a user, I can control pitch (semitones) and click Apply so that my voice sounds higher or lower after offline processing
-- As a user, I can control formant shift independently of pitch and click Apply so that my voice sounds like a different body size
+- ~~As a user, I can control formant shift independently of pitch and click Apply so that my voice sounds like a different body size~~ **DEFERRED** — Rubber Band CLI lacks native formant scale control; two-pass CLI workaround produces unacceptable artifacts. Slider disabled in UI. Re-enabled when Rubber Band C++ library API is integrated via Node.js native addon (see Sprint 3).
 - As a user, I can control playback speed/tempo and click Apply so that my character speaks at a different rate
 - As a user, I see a progress indicator while Stage 1 processing is running so that I know the app is working
 - As a user, I see a "preview outdated" indicator when pitch/formant/tempo sliders have changed but not yet been applied
+- As a user, I can click a "reset" link on Stage 1 controls to return pitch/formant/speed to defaults (still requires Apply to re-process)
+- As a user, I can click a "reset" link on Stage 2 controls to return real-time effects to defaults (applies immediately, no Apply needed)
 - As a user, I can control reverb and room size in real-time (instant slider response) so that I can fine-tune without waiting
 - As a user, I can toggle a bypass switch to compare processed vs original audio so that I can judge the effect
+- As a user, I see a tooltip on every slider and audio control explaining what it does in plain language so that I do not need audio engineering knowledge to use the app
 - As a developer, the Rubber Band CLI binary is bundled and resolved correctly in dev and production
 - As a developer, all AudioEngine parameter changes and IPC calls are logged at debug level so that issues can be traced
 
 **Acceptance Criteria:**
 - WAV file loads and plays back
 - Pitch and formant controls work via Stage 1 IPC — Apply button triggers offline processing
-- Formant shift is audibly independent of pitch (the core requirement rubberband-web couldn't meet)
+- ~~Formant shift is audibly independent of pitch~~ **DEFERRED** — requires Rubber Band native library integration (Sprint 3)
 - Tempo/speed changes via Stage 1 without affecting pitch
 - Progress indicator visible during Stage 1 processing
 - Stale preview indicator visible when offline params changed but not applied
+- Stage 1 reset link returns pitch/formant/speed to defaults and marks preview stale
+- Stage 2 reset link returns real-time effects to defaults and updates engine immediately
+- Every slider and audio control has a tooltip with short hover text and detailed help via "?" icon
+- Tooltip content is sourced from `src/shared/tooltips.ts` — not hardcoded in components
 - Reverb and other real-time controls respond instantly
 - Bypass toggle switches between processed and dry signal
 - No audio glitches or dropouts during real-time parameter changes during playback
@@ -157,10 +164,17 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Import WAV via drag-and-drop — file loads and plays
 - [ ] Import WAV via file browser dialog — file loads and plays
 - [ ] Pitch: set to +12 semitones, click Apply — audible pitch change after processing completes
-- [ ] Formant: shift independently of pitch, click Apply — audible character change, NOT chipmunk
+- [ ] ~~Formant: shift independently of pitch, click Apply — audible character change, NOT chipmunk~~ **DEFERRED to Sprint 3** — formant slider disabled with explanation text in UI
 - [ ] Speed/Tempo: set to 0.7, click Apply — slower playback without pitch change
 - [ ] Progress indicator: visible during Stage 1 processing, disappears on completion
 - [ ] Stale indicator: change pitch slider without clicking Apply — "preview outdated" visible
+- [ ] Stage 1 reset: click "reset" — pitch/formant/speed return to 0/0/1.0, stale indicator appears
+- [ ] Stage 1 reset + Apply: click "reset" then Apply — audio reverts to unprocessed original
+- [ ] Stage 2 reset: click "reset" — high-pass/compressor return to defaults, audible change immediate
+- [ ] Tooltips: hover over each slider label — short description appears as native title text
+- [ ] Tooltips: hover over "?" icon on each control — full detail text appears including "Works well with" pairings
+- [ ] Tooltips: verify Pitch, Formant, Speed, Volume, High-Pass, Comp Threshold, Comp Ratio all have tooltips
+- [ ] Tooltips: verify tooltip content matches `src/shared/tooltips.ts` (not hardcoded)
 - [ ] Reverb: sweep amount and room size — instant audible change (no Apply needed)
 - [ ] Bypass toggle: A/B between processed and dry — instant switch, no dropout
 - [ ] Check debug logs for IPC AUDIO_PROCESS calls and Rubber Band CLI command strings
@@ -192,15 +206,20 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can adjust compression threshold and ratio so that my voice has consistent dynamic control
 - As a user, I can set a high-pass filter cutoff so that low-end rumble is removed
 - As a user, I can set a wet/dry mix per effect so that I can blend processed and dry signal per effect
+- As a user, I can control formant shift independently of pitch via the Rubber Band C++ library API (`setFormantScale()`) so that my voice sounds like a different body size without robotic artifacts — **RE-ENABLEMENT from Sprint 2** (requires Node.js native addon or `node-ffi-napi` wrapping the Rubber Band shared library; single-pass processing, no two-pass CLI workaround)
 - As a user, I can toggle between Basic and Advanced mode so that the interface is not overwhelming by default
 - As a user, Basic mode shows pitch, formant, reverb, and speed so that I can get results quickly
 - As a user, Advanced mode reveals all remaining controls so that I have full control when needed
+- As a user, I can enable an "Auto Apply" checkbox under Stage 1 controls so that when I click Play, any pending Stage 1 changes are automatically applied before playback starts
+- As a user, every new control added in this sprint has a tooltip sourced from `tooltips.ts` so that the help experience is consistent
 
 **Acceptance Criteria:**
 - All advanced controls audibly affect output
 - Basic/Advanced toggle shows and hides correct controls
 - Toggle state persists across sessions
 - No performance degradation with full effects chain active
+- Every new control has a tooltip from `tooltips.ts` with short text, detail, and pairings
+- Auto Apply checkbox: when enabled and Play is clicked with stale Stage 1 params, processing runs automatically before playback
 
 **QA Checklist:**
 - [ ] Vibrato: sweep rate and depth — audible oscillation
@@ -211,10 +230,12 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Compressor: adjust threshold and ratio — audible dynamic control
 - [ ] High-pass filter: sweep cutoff — audible low-end removal
 - [ ] Wet/dry mix: adjust per effect — blend between processed and dry
+- [ ] Formant (re-enabled): shift independently of pitch via native Rubber Band API — audible character change, NOT chipmunk, no robotic artifacts
 - [ ] Basic mode: only pitch, formant, reverb, speed visible
 - [ ] Advanced mode: all controls visible
 - [ ] Toggle mode, restart app — mode persists
 - [ ] Enable all effects simultaneously — no audible glitches or frame drops
+- [ ] Tooltips: all new controls (vibrato, tremolo, vocal fry, breathiness, EQ, wet/dry) have tooltips from `tooltips.ts`
 - [ ] Audio sanity: bypass toggle with full chain active — clean A/B comparison
 - [ ] Negative: set all parameters to max simultaneously — no crash, no NaN audio
 - [ ] Negative: rapidly toggle Basic/Advanced mode during playback — no UI freeze or audio dropout
@@ -279,6 +300,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can add a text notes field to a preset so that I remember details like tone direction and performance notes
 - As a user, I can create emotion sub-presets for a character (angry, whisper, sad) so that the same character sounds consistent across emotional states
 - As a user, I can compare two presets in A/B mode so that I can choose between two versions of a character
+- As a user, preset-related controls (save, load, A/B, emotion sub-presets) have tooltips from `tooltips.ts` so that the workflow is self-documenting
 - As a developer, all preset save, load, and delete operations are logged at info level with the preset name
 
 **Acceptance Criteria:**
@@ -327,6 +349,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, my exported file is normalized so that all character exports have consistent volume
 - As a user, I can configure noise gate settings so that silence and background noise are stripped before export
 - As a user, I can add silence padding in milliseconds to the start and end of exported files so that game engine audio triggers do not clip
+- As a user, export controls (bit depth, sample rate, normalize, noise gate, silence padding) have tooltips from `tooltips.ts` so that I understand what each setting does
 - As a developer, the full FFmpeg command executed for each export is logged at debug level so that export issues can be diagnosed
 
 **Acceptance Criteria:**
@@ -373,6 +396,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can use punch-in recording to re-record a specific section so that I do not redo a full take for one mistake
 - As a user, I can use keyboard shortcuts for record, stop, and punch-in so that I can operate hands-free
 - As a user, I can review playback at reduced speed without pitch change so that I can evaluate timing and delivery
+- As a user, recording controls (count-in, take management, punch-in) have tooltips from `tooltips.ts` so that I understand the workflow
 
 **Acceptance Criteria:**
 - Mic input routes through the same AudioEngine effects chain as file input
