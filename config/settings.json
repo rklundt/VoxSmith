@@ -1,0 +1,16 @@
+{
+  "logging": {
+    "maxSessionFiles": 5,
+    "logLevel": "info"
+  },
+  "export": {
+    "defaultBitDepth": 24,
+    "defaultSampleRate": 44100,
+    "defaultNormalize": true,
+    "fileNamingTemplate": "{character}_{scene}_{line}_{emotion}"
+  },
+  "ui": {
+    "advancedModeDefault": false,
+    "theme": "dark"
+  }
+}

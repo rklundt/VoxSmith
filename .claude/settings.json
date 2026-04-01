@@ -1,0 +1,18 @@
+{
+  "model": "claude-sonnet-4-20250514",
+  "context": {
+    "files": [
+      "CLAUDE.md",
+      "docs/architecture.md",
+      "docs/phasesAndSprints.md",
+      "docs/techStack.md"
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx *)"
+    ]
+  }
+}

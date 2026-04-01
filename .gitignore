@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+out/
+release/
+
+# Bundled binaries (fetched via postinstall, not committed)
+src/assets/ffmpeg/
+src/assets/rubberband/
+src/assets/rubberband-wasm/
+
+# Logs
+logs/
+*.log
+
+# User settings (override file only — settings.json is committed as defaults)
+config/userSettingsOverride.json
+
+# User data
+userData/
+
+# Environment
+.env
+.env.*
+
+# Installers and binaries
+*.exe
+*.dmg
+*.AppImage
+*.snap
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test
+testResults/
+coverage/
+.vitest-cache/
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
+
+# Editor / local
+*.local
