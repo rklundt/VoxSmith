@@ -287,9 +287,14 @@ When a sprint is **accepted** (all QA checklist items pass, user confirms), foll
    - Title: `Sprint {N}: {Sprint Title from phasesAndSprints.md}`
    - Body: Summary of user stories completed, key changes, QA results
    - Tag with the sprint version (e.g., `v0.2.0`)
-5. **Merge the PR** once the user approves. Use merge commit (not squash) to preserve sprint commit history.
+5. **Auto-merge the PR** unless there are merge conflicts:
+   - If no conflicts: merge immediately using `gh pr merge --merge`. Do not wait for user approval.
+   - If conflicts exist: attempt to resolve them, re-run `pnpm typecheck && pnpm vitest run`, and merge if tests pass.
+   - If conflicts cannot be resolved cleanly or tests fail after resolution: stop and ask the user for guidance.
+   - Use merge commit (not squash) to preserve sprint commit history.
 6. **Tag the merge** on main:
    ```bash
+   git checkout main && git pull
    git tag v0.{N}.0
    git push origin v0.{N}.0
    ```
@@ -303,6 +308,7 @@ When a sprint is **accepted** (all QA checklist items pass, user confirms), foll
 
 - **Never commit directly to `main`** — all changes go through sprint branches + PRs.
 - **Never force-push to `main`** — main history is append-only.
+- **Auto-approve PRs** — merge immediately after push unless conflicts or test failures require intervention.
 - When starting a new sprint, create the branch from the latest `main`:
   ```bash
   git checkout main && git pull && git checkout -b sprint/{N}-{description}
