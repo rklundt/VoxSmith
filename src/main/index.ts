@@ -29,11 +29,38 @@
  * RULE: Audio processing never runs here. Only file I/O, IPC, and FFmpeg.
  */
 
-import { app, BrowserWindow, session } from 'electron'
+import { app, BrowserWindow, session, protocol, net } from 'electron'
 import path from 'path'
 import { loadSettings } from './fileSystem/settings'
 import { initializeLogging } from './fileSystem/logManager'
 import { registerIpcHandlers } from './ipc/index'
+
+// ─── Custom Protocol Registration ────────────────────────────────────────────
+
+/**
+ * Register the 'portrait' custom protocol scheme.
+ * MUST be called before app.whenReady() - Electron requires scheme registration
+ * at startup so CSP and the renderer know it's a valid protocol.
+ *
+ * The portrait:// protocol serves image files from the portraits/ directory.
+ * We need this because Electron's renderer (served from localhost in dev) blocks
+ * file:// URIs for security. A custom protocol sidesteps this restriction cleanly.
+ *
+ * Usage in renderer: <img src="portrait://abc123.png" />
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'portrait',
+    privileges: {
+      // Allow the renderer to fetch resources via this protocol
+      standard: false,
+      secure: true,
+      supportFetchAPI: true,
+      // Allow use in <img> tags
+      corsEnabled: false,
+    },
+  },
+])
 
 // ─── Settings and Logger Initialization ──────────────────────────────────────
 
@@ -73,7 +100,7 @@ function configureCSP(): void {
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
         "worker-src 'self' blob:; " +
         "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: file:; " +
+        "img-src 'self' data: file: portrait:; " +
         "media-src 'self' file: blob:; " +
         "connect-src 'self' ws://localhost:* http://localhost:*"
       : // Production: 'unsafe-eval' is still required for Emscripten's new Function()
@@ -84,7 +111,7 @@ function configureCSP(): void {
         "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; " +
         "worker-src 'self' blob:; " +
         "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: file:; " +
+        "img-src 'self' data: file: portrait:; " +
         "media-src 'self' file: blob:; " +
         "connect-src 'self'"
 
@@ -137,6 +164,25 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Configure CSP before creating any windows
   configureCSP()
+
+  // Register the portrait:// protocol handler.
+  // Maps portrait://filename.png to the local portraits/ directory.
+  // This runs after app is ready because protocol.handle requires it.
+  const portraitsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'portraits')
+    : path.join(app.getAppPath(), 'portraits')
+
+  protocol.handle('portrait', (request) => {
+    // Extract the filename from the URL: portrait://filename.png
+    // URL parsing gives us the hostname as the filename for scheme://host format
+    const url = new URL(request.url)
+    // The filename is in the hostname (portrait://abc123.png -> hostname = "abc123.png")
+    const filename = url.hostname + url.pathname
+    const filePath = path.join(portraitsDir, filename)
+    logger.debug(`Portrait protocol: serving ${filePath}`)
+    return net.fetch(`file://${filePath}`)
+  })
+  logger.info(`Portrait protocol registered (dir: ${portraitsDir})`)
 
   // Register all IPC handlers before the renderer can call them
   registerIpcHandlers(logger)

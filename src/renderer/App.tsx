@@ -19,30 +19,62 @@
 /**
  * VoxSmith - App Shell
  *
- * Sprint 4: Adds WaveformPanel above ControlPanel for visual feedback.
- * WaveformPanel renders the audio waveform, level meter, and playhead.
- * ControlPanel handles all parameter controls and playback buttons.
+ * Sprint 5: Adds PresetPanel sidebar (hidden by default) and a hamburger
+ * menu in the top bar for toggling panels. The menu gives us a single place
+ * to add more view toggles in future sprints (Settings panel, etc.).
  *
- * Both panels share the same AudioEngine instance via useAudioEngine().
+ * Layout: TopBar + (optional PresetPanel sidebar) + main area (Waveform + Controls).
+ *
+ * All panels share the same AudioEngine instance via useAudioEngine().
  * The hook is called here in App so that both children access the same
  * engine. Props are passed down rather than calling the hook in each child.
  *
  * Future sprints will add:
- * - Sprint 5: PresetPanel
  * - Sprint 7: Recording controls
- * - Sprint 8: Settings panel
+ * - Sprint 8: Settings panel (toggle in hamburger menu)
  */
 
-import React, { useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { ControlPanel } from './components/panels/ControlPanel'
 import { WaveformPanel } from './components/panels/WaveformPanel'
+import { PresetPanel } from './components/panels/PresetPanel'
 import { useAudioEngine } from './hooks/useAudioEngine'
+import { usePresets } from './hooks/usePresets'
 
 function App(): React.ReactElement {
   // Single AudioEngine instance shared by all panels.
   // useAudioEngine returns the module-level singleton and provides
   // stable callbacks for interacting with it.
   const audioEngine = useAudioEngine()
+
+  // Preset management hook - bridges UI actions to IPC and stores.
+  // Receives applySnapshot so presets can update the audio engine.
+  const presetsHook = usePresets(audioEngine.applySnapshot)
+
+  // ─── Panel Visibility ──────────────────────────────────────────────────
+  // PresetPanel starts hidden so the main controls have full width on launch.
+  // The hamburger menu toggles it. Future sprints add more panels here.
+  const [showPresets, setShowPresets] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close hamburger menu when clicking outside of it
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
+  const togglePresets = useCallback(() => {
+    setShowPresets((prev) => !prev)
+    setMenuOpen(false)
+  }, [])
 
   // Verify IPC bridge is still working (runs silently in the background)
   useEffect(() => {
@@ -53,17 +85,113 @@ function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* Waveform display and level meter - fixed at top */}
-      <WaveformPanel
-        getCurrentTime={audioEngine.getCurrentTime}
-        getDuration={audioEngine.getDuration}
-        getOutputLevel={audioEngine.getOutputLevel}
-        seek={audioEngine.seek}
-        getEngine={audioEngine.getEngine}
-      />
-      {/* All parameter controls and playback buttons */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <ControlPanel />
+      {/* ── Top Bar ─────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '4px 10px',
+        backgroundColor: '#0a0a18',
+        borderBottom: '1px solid #333',
+        height: '32px',
+        flexShrink: 0,
+      }}>
+        {/* App title */}
+        <span style={{ fontSize: '13px', fontWeight: 600, color: '#8ab', letterSpacing: '0.5px' }}>
+          VoxSmith
+        </span>
+
+        {/* Hamburger menu */}
+        <div ref={menuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setMenuOpen((prev) => !prev)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#999',
+              cursor: 'pointer',
+              fontSize: '18px',
+              padding: '2px 6px',
+              lineHeight: 1,
+            }}
+            title="Menu"
+          >
+            {/* Three-line hamburger icon using unicode box-drawing chars */}
+            &#9776;
+          </button>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              backgroundColor: '#1a1a2e',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              padding: '4px 0',
+              minWidth: '160px',
+              zIndex: 100,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            }}>
+              <button
+                onClick={togglePresets}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: '#ccc',
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                {showPresets ? 'Hide Presets' : 'Show Presets'}
+              </button>
+              {/* Future menu items (Sprint 8: Settings, etc.) go here */}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Main Layout ─────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* Left sidebar: preset library (hidden by default) */}
+        {showPresets && (
+          <PresetPanel
+            onSaveNew={presetsHook.saveNewPreset}
+            onLoad={presetsHook.loadPreset}
+            onUpdate={presetsHook.updatePreset}
+            onOverwrite={presetsHook.overwriteActivePreset}
+            onDelete={presetsHook.deletePresetById}
+            onSetPortrait={presetsHook.setPortrait}
+            onAddEmotion={presetsHook.addEmotionVariant}
+            onDeleteEmotion={presetsHook.deleteEmotionVariant}
+            onLoadEmotion={presetsHook.loadEmotionVariant}
+            applySnapshot={audioEngine.applySnapshot}
+            onClose={togglePresets}
+          />
+        )}
+
+        {/* Main content area: waveform + controls */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+          {/* Waveform display and level meter - fixed at top */}
+          <WaveformPanel
+            getCurrentTime={audioEngine.getCurrentTime}
+            getDuration={audioEngine.getDuration}
+            getOutputLevel={audioEngine.getOutputLevel}
+            seek={audioEngine.seek}
+            getEngine={audioEngine.getEngine}
+          />
+          {/* All parameter controls and playback buttons */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <ControlPanel />
+          </div>
+        </div>
       </div>
     </div>
   )

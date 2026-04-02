@@ -299,7 +299,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can add a portrait image to a preset so that I remember who the character is visually
 - As a user, I can add a text notes field to a preset so that I remember details like tone direction and performance notes
 - As a user, I can create emotion sub-presets for a character (angry, whisper, sad) so that the same character sounds consistent across emotional states
-- As a user, I can compare two presets in A/B mode so that I can choose between two versions of a character
+- As a user, I can toggle between two presets in A/B mode so that I can switch between two versions of a character
 - As a user, preset-related controls (save, load, A/B, emotion sub-presets) have tooltips from `tooltips.ts` so that the workflow is self-documenting
 - As a developer, all preset save, load, and delete operations are logged at info level with the preset name
 
@@ -307,7 +307,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - Presets persist in `presets.json` across app restarts
 - Portrait images are stored as relative paths in `presets.json`, files managed in `userData/portraits/`
 - On preset delete, associated portrait file is deleted in the same IPC operation
-- A/B toggle instantly switches between two loaded presets
+- A/B toggle instantly switches Stage 2 effects between two loaded presets; Stage 1 params update visually but require Apply
 - Emotion sub-presets are nested under the parent character preset
 - Folders/categories are collapsible in the preset panel
 
@@ -322,7 +322,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Add text notes to a preset — notes persist across restart
 - [ ] Create emotion sub-presets (angry, whisper, sad) under a character — nested correctly
 - [ ] Create folders/categories — collapsible in panel
-- [ ] A/B compare two presets — instant toggle, no audio gap
+- [ ] A/B toggle two presets — instant toggle of Stage 2 effects, Stage 1 requires Apply
 - [ ] Save preset with all effects at extreme values — loads back correctly
 - [ ] Negative: save preset with empty name — rejected with error message, not saved
 - [ ] Negative: save preset with duplicate name — handled gracefully (rename prompt or suffix)

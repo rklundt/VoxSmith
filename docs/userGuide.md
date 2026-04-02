@@ -290,11 +290,11 @@ The four bands roughly correspond to:
 
 ---
 
-### A/B Comparison
+### A/B Toggle
 
-**What it does:** Loads two presets simultaneously so you can toggle between them instantly while listening.
+**What it does:** Loads two presets into slot A and slot B so you can switch between them. Stage 2 effects (reverb, EQ, etc.) switch instantly. Stage 1 settings (pitch, formant, speed) update visually but require Apply to hear the change.
 
-**Works well with:** When you are deciding between two versions of a character and want to compare them on the same audio.
+**Works well with:** When you are deciding between two versions of a character and want to toggle settings on the same audio.
 
 ---
 

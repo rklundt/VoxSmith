@@ -10,7 +10,7 @@ Licensed under [AGPL-3.0](LICENSE).
 
 - **Node.js** 20+
 - **pnpm** (install via `npm install -g pnpm` if needed)
-- **Windows 11** (primary target; Windows 10 minimum)
+- **Windows 11** Only if you want to proceed with compiling to .exe file (Win 11 is the primary target; Windows 10 minimum)
 
 ## Setup
 

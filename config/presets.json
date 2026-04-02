@@ -1,0 +1,215 @@
+{
+  "presets": [
+    {
+      "id": "mnhln2ap-khbqm5",
+      "name": "PitchHigh4",
+      "category": "Bad Guyz",
+      "emotionVariants": [
+        {
+          "id": "mnhnpi6v-mayndm",
+          "emotion": "Irritated",
+          "engineSnapshot": {
+            "pitch": 0,
+            "formant": 0,
+            "reverbAmount": 0,
+            "reverbRoomSize": 0.5,
+            "speed": 1,
+            "vibratoRate": 5,
+            "vibratoDepth": 0,
+            "tremoloRate": 4,
+            "tremoloDepth": 0,
+            "vocalFryIntensity": 0,
+            "breathiness": 0,
+            "breathiness2": 0,
+            "eq": [
+              {
+                "gain": 0,
+                "frequency": 200
+              },
+              {
+                "gain": 0,
+                "frequency": 800
+              },
+              {
+                "gain": 0,
+                "frequency": 2500
+              },
+              {
+                "gain": 0,
+                "frequency": 8000
+              }
+            ],
+            "compressorThreshold": -24,
+            "compressorRatio": 4,
+            "highPassFrequency": 80,
+            "wetDryMix": {
+              "vibrato": 1,
+              "tremolo": 1,
+              "vocalFry": 1,
+              "breathiness": 1,
+              "breathiness2": 1,
+              "reverb": 0
+            },
+            "bypassed": false
+          }
+        }
+      ],
+      "engineSnapshot": {
+        "pitch": 24,
+        "formant": 0,
+        "reverbAmount": 0,
+        "reverbRoomSize": 0.5,
+        "speed": 1,
+        "vibratoRate": 5,
+        "vibratoDepth": 0,
+        "tremoloRate": 4,
+        "tremoloDepth": 0,
+        "vocalFryIntensity": 0,
+        "breathiness": 0,
+        "breathiness2": 0,
+        "eq": [
+          {
+            "gain": 0,
+            "frequency": 200
+          },
+          {
+            "gain": 0,
+            "frequency": 800
+          },
+          {
+            "gain": 0,
+            "frequency": 2500
+          },
+          {
+            "gain": 0,
+            "frequency": 8000
+          }
+        ],
+        "compressorThreshold": -24,
+        "compressorRatio": 4,
+        "highPassFrequency": 80,
+        "wetDryMix": {
+          "vibrato": 1,
+          "tremolo": 1,
+          "vocalFry": 1,
+          "breathiness": 1,
+          "breathiness2": 1,
+          "reverb": 0
+        },
+        "bypassed": false
+      },
+      "createdAt": "2026-04-02T14:57:56.833Z",
+      "updatedAt": "2026-04-02T16:00:10.211Z",
+      "portraitPath": "portraits\\mnhln2ap-khbqm5.png",
+      "notes": "ma' Notes!",
+      "portraitUri": "portrait://mnhln2ap-khbqm5.png"
+    },
+    {
+      "id": "mnhlnvro-l3l1yb",
+      "name": "PitchLow4",
+      "category": "",
+      "emotionVariants": [],
+      "engineSnapshot": {
+        "pitch": -4,
+        "formant": 0,
+        "reverbAmount": 0,
+        "reverbRoomSize": 0.5,
+        "speed": 1,
+        "vibratoRate": 5,
+        "vibratoDepth": 0,
+        "tremoloRate": 4,
+        "tremoloDepth": 0,
+        "vocalFryIntensity": 0,
+        "breathiness": 0,
+        "breathiness2": 0,
+        "eq": [
+          {
+            "gain": 0,
+            "frequency": 200
+          },
+          {
+            "gain": 0,
+            "frequency": 800
+          },
+          {
+            "gain": 0,
+            "frequency": 2500
+          },
+          {
+            "gain": 0,
+            "frequency": 8000
+          }
+        ],
+        "compressorThreshold": -24,
+        "compressorRatio": 4,
+        "highPassFrequency": 80,
+        "wetDryMix": {
+          "vibrato": 1,
+          "tremolo": 1,
+          "vocalFry": 1,
+          "breathiness": 1,
+          "breathiness2": 1,
+          "reverb": 0
+        },
+        "bypassed": false
+      },
+      "createdAt": "2026-04-02T14:58:35.028Z",
+      "updatedAt": "2026-04-02T15:56:42.512Z",
+      "portraitPath": "portraits\\mnhlnvro-l3l1yb.png",
+      "portraitUri": "portrait://mnhlnvro-l3l1yb.png",
+      "notes": "ma' notes 2!"
+    },
+    {
+      "id": "mnhnu83u-ry4bvi",
+      "name": "extreme",
+      "category": "",
+      "emotionVariants": [],
+      "engineSnapshot": {
+        "pitch": 24,
+        "formant": 0,
+        "reverbAmount": 1,
+        "reverbRoomSize": 1,
+        "speed": 2,
+        "vibratoRate": 15,
+        "vibratoDepth": 1,
+        "tremoloRate": 15,
+        "tremoloDepth": 1,
+        "vocalFryIntensity": 1,
+        "breathiness": 1,
+        "breathiness2": 1,
+        "eq": [
+          {
+            "gain": 12,
+            "frequency": 200
+          },
+          {
+            "gain": 12,
+            "frequency": 800
+          },
+          {
+            "gain": 12,
+            "frequency": 2500
+          },
+          {
+            "gain": 12,
+            "frequency": 8000
+          }
+        ],
+        "compressorThreshold": 0,
+        "compressorRatio": 20,
+        "highPassFrequency": 500,
+        "wetDryMix": {
+          "vibrato": 0.41,
+          "tremolo": 0.42,
+          "vocalFry": 0.42,
+          "breathiness": 0.43,
+          "breathiness2": 0.45,
+          "reverb": 0.47
+        },
+        "bypassed": false
+      },
+      "createdAt": "2026-04-02T15:59:30.186Z",
+      "updatedAt": "2026-04-02T15:59:30.186Z"
+    }
+  ]
+}

@@ -17,13 +17,11 @@
  */
 
 /**
- * Preset Data Access - Renderer Side
+ * Preset Data Access - Renderer Side (Sprint 5)
  *
  * Provides typed access to preset operations via the window.voxsmith IPC bridge.
- * The renderer never reads/writes presets.json directly.
- *
- * Sprint 0: Stub - all methods delegate to IPC bridge.
- * Sprint 5: Will be fully implemented with preset management logic.
+ * The renderer never reads/writes presets.json directly - all file I/O goes
+ * through the main process via these IPC wrappers.
  */
 
 import type { Preset, PresetLibrary } from '../shared/types'
@@ -33,7 +31,7 @@ export async function loadAllPresets(): Promise<PresetLibrary> {
   return window.voxsmith.loadAllPresets()
 }
 
-/** Save a preset via main process */
+/** Save a preset via main process (create or update) */
 export async function savePreset(preset: Preset): Promise<void> {
   return window.voxsmith.savePreset(preset)
 }
@@ -41,4 +39,24 @@ export async function savePreset(preset: Preset): Promise<void> {
 /** Delete a preset and its associated portrait via main process */
 export async function deletePreset(id: string): Promise<void> {
   return window.voxsmith.deletePreset(id)
+}
+
+/**
+ * Copy a portrait image to the portraits directory and return
+ * the relative path and file:// URI for display.
+ *
+ * @param sourcePath - Absolute path to the user's selected image file
+ * @param presetId - The preset ID, used to name the file uniquely
+ * @returns Object with relativePath and uri, or null on failure
+ */
+export async function savePortrait(
+  sourcePath: string,
+  presetId: string
+): Promise<{ relativePath: string; uri: string } | null> {
+  return window.voxsmith.savePortrait(sourcePath, presetId)
+}
+
+/** Open a file dialog for selecting an image file */
+export async function openImageDialog(): Promise<string | null> {
+  return window.voxsmith.openImageDialog()
 }

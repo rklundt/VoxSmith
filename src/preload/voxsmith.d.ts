@@ -48,6 +48,7 @@ export interface VoxsmithAPI {
   loadAllPresets(): Promise<PresetLibrary>
   savePreset(preset: Preset): Promise<void>
   deletePreset(id: string): Promise<void>
+  savePortrait(sourcePath: string, presetId: string): Promise<{ relativePath: string; uri: string } | null>
 
   // Stage 1 - Offline Audio Processing (Rubber Band CLI)
   processAudio(request: AudioProcessRequest): Promise<AudioProcessResult>
