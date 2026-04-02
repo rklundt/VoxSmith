@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,14 +17,14 @@
  */
 
 /**
- * Log Manager — Main Process
+ * Log Manager - Main Process
  *
  * Handles session log file creation and purge-on-startup.
  *
  * Strategy:
  * - A new log file is created on every app launch: logs/session-YYYY-MM-DD_HH-MM-SS.log
  * - After creating the new file, oldest logs are purged if count exceeds maxSessionFiles
- * - maxSessionFiles is read from merged settings — configurable without a code change
+ * - maxSessionFiles is read from merged settings - configurable without a code change
  */
 
 import fs from 'fs'
@@ -73,7 +73,7 @@ export function purgeOldLogs(logDir: string, maxSessionFiles: number): void {
   try {
     const files = fs.readdirSync(logDir)
       .filter(f => f.startsWith('session-') && f.endsWith('.log'))
-      .sort() // Chronological sort — earliest first due to YYYY-MM-DD_HH-MM-SS format
+      .sort() // Chronological sort - earliest first due to YYYY-MM-DD_HH-MM-SS format
 
     // Delete oldest files until we're at or below the limit
     const toDelete = files.length - maxSessionFiles
@@ -84,7 +84,7 @@ export function purgeOldLogs(logDir: string, maxSessionFiles: number): void {
       }
     }
   } catch {
-    // If purge fails, continue — this is a housekeeping operation, not critical
+    // If purge fails, continue - this is a housekeeping operation, not critical
     console.error('Failed to purge old log files')
   }
 }
@@ -104,7 +104,7 @@ export function createSessionLogger(logLevel: string): winston.Logger {
   const logPath = path.join(logDir, logFilename)
 
   const transports: winston.transport[] = [
-    // Session log file — always active
+    // Session log file - always active
     new winston.transports.File({
       filename: logPath,
       level: logLevel,
@@ -117,7 +117,7 @@ export function createSessionLogger(logLevel: string): winston.Logger {
     }),
   ]
 
-  // Console transport — dev mode only, for developer convenience
+  // Console transport - dev mode only, for developer convenience
   if (!app.isPackaged) {
     transports.push(
       new winston.transports.Console({
@@ -159,7 +159,7 @@ export function initializeLogging(maxSessionFiles: number, logLevel: string): wi
   // (the new file already exists at this point via the File transport)
   purgeOldLogs(logDir, maxSessionFiles)
 
-  // Log app launch info — required by CLAUDE.md logging spec
+  // Log app launch info - required by CLAUDE.md logging spec
   logger.info(`${APP_NAME} starting`)
   logger.info(`Version: ${app.getVersion()}`)
   logger.info(`Platform: ${process.platform} ${process.arch}`)

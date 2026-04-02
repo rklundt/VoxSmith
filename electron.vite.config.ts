@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@ import react from '@vitejs/plugin-react'
  * - renderer: React UI (Chromium browser context)
  *
  * externalizeDepsPlugin() ensures Node.js dependencies (electron, fs, path, etc.)
- * are not bundled into the main/preload builds — they're available at runtime.
+ * are not bundled into the main/preload builds - they're available at runtime.
  */
 export default defineConfig({
   main: {
@@ -46,7 +46,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       outDir: 'out/preload',
-      // Preload must be CommonJS — Electron's sandboxed preload context
+      // Preload must be CommonJS - Electron's sandboxed preload context
       // does not support ESM import statements
       rollupOptions: {
         input: {

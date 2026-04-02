@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,15 +17,15 @@
  */
 
 /**
- * Settings Reader — Main Process
+ * Settings Reader - Main Process
  *
  * Reads and merges app settings from two files:
- * 1. config/settings.json — committed defaults, shipped with the app
- * 2. config/userSettingsOverride.json — user-specific overrides, gitignored
+ * 1. config/settings.json - committed defaults, shipped with the app
+ * 2. config/userSettingsOverride.json - user-specific overrides, gitignored
  *
  * Shallow merge: override file wins on any conflicting key.
  * If settings.json is missing or corrupted, falls back to hardcoded defaults.
- * If override file doesn't exist, that's normal — it's created on first user change.
+ * If override file doesn't exist, that's normal - it's created on first user change.
  */
 
 import fs from 'fs'
@@ -71,7 +71,7 @@ function readJsonSafe(filePath: string): Record<string, unknown> | null {
  * 2. config/settings.json (shipped defaults)
  * 3. config/userSettingsOverride.json (user changes)
  *
- * Returns a fully populated AppSettings object — never partial.
+ * Returns a fully populated AppSettings object - never partial.
  */
 export function loadSettings(logger?: { warn: (msg: string) => void }): AppSettings {
   const configDir = getConfigDir()
@@ -91,7 +91,7 @@ export function loadSettings(logger?: { warn: (msg: string) => void }): AppSetti
       ui: { ...settings.ui, ...(defaults.ui as object ?? {}) },
     } as AppSettings
   } else {
-    logger?.warn(`Settings file not found or corrupted at ${defaultsPath} — using hardcoded defaults`)
+    logger?.warn(`Settings file not found or corrupted at ${defaultsPath} - using hardcoded defaults`)
     // Recreate the defaults file so the user has a recoverable state
     try {
       if (!fs.existsSync(configDir)) {
@@ -100,7 +100,7 @@ export function loadSettings(logger?: { warn: (msg: string) => void }): AppSetti
       fs.writeFileSync(defaultsPath, JSON.stringify(DEFAULT_APP_SETTINGS, null, 2), 'utf-8')
       logger?.warn(`Recreated settings.json with hardcoded defaults at ${defaultsPath}`)
     } catch {
-      // If we can't write the file, continue — the app still works with in-memory defaults
+      // If we can't write the file, continue - the app still works with in-memory defaults
     }
   }
 
@@ -113,7 +113,7 @@ export function loadSettings(logger?: { warn: (msg: string) => void }): AppSetti
       ui: { ...settings.ui, ...(overrides.ui as object ?? {}) },
     } as AppSettings
   }
-  // No warning if override file doesn't exist — that's normal for first launch
+  // No warning if override file doesn't exist - that's normal for first launch
 
   // Safety: enforce minimum session file count so user can't set it to 0 or negative
   if (settings.logging.maxSessionFiles < MIN_SESSION_FILES) {
@@ -128,7 +128,7 @@ export function loadSettings(logger?: { warn: (msg: string) => void }): AppSetti
 
 /**
  * Saves user settings overrides to config/userSettingsOverride.json.
- * Only the override file is written — settings.json is never modified at runtime.
+ * Only the override file is written - settings.json is never modified at runtime.
  */
 export function saveSettingsOverride(
   overrides: Partial<AppSettings>,

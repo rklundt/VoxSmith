@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,10 +19,10 @@
 import { defineConfig } from 'vitest/config'
 
 /**
- * Vitest configuration — standalone, separate from electron.vite.config.ts
+ * Vitest configuration - standalone, separate from electron.vite.config.ts
  *
  * Scope: unit tests for pure functions in src/shared/ and src/data/.
- * No Web Audio API, Electron, or DOM dependencies — those are validated manually.
+ * No Web Audio API, Electron, or DOM dependencies - those are validated manually.
  */
 export default defineConfig({
   test: {

@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ module.exports = {
   ],
   win: {
     target: 'nsis',
-    // icon: 'src/assets/icon.ico' — uncomment when icon is available
+    // icon: 'src/assets/icon.ico' - uncomment when icon is available
   },
   nsis: {
     oneClick: false,
@@ -43,9 +43,9 @@ module.exports = {
   },
   extraResources: [
     { from: 'src/assets/ffmpeg', to: 'ffmpeg', filter: ['**/*'] },
-    // Rubber Band CLI binary — used for Stage 1 offline processing (pitch/formant/tempo)
+    // Rubber Band CLI binary - used for Stage 1 offline processing (pitch/formant/tempo)
     { from: 'src/assets/rubberband', to: 'rubberband', filter: ['*.exe', '*.dll'] },
-    // Rubber Band WASM — retained from Sprint 1 spike (may be removed in future)
+    // Rubber Band WASM - retained from Sprint 1 spike (may be removed in future)
     { from: 'src/assets/rubberband-wasm', to: 'rubberband-wasm', filter: ['**/*'] },
     { from: 'config', to: 'config', filter: ['settings.json'] }
   ]

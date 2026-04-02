@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * VoxSmith — Renderer Entry Point
+ * VoxSmith - Renderer Entry Point
  *
  * Mounts the React application into the DOM.
  * This is the entry point for the Chromium renderer process.

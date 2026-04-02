@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * Engine Store — Zustand
+ * Engine Store - Zustand
  *
  * Owns: current parameter values, playback state, Stage 1 processing state,
  * bypass state, input mode, and the "stale preview" indicator.
@@ -27,9 +27,9 @@
  * STALE PREVIEW PATTERN:
  * Stage 1 parameters (pitch, formant, tempo) are processed offline by the
  * Rubber Band CLI. When the user changes any of these parameters, the preview
- * is "stale" — what they hear doesn't match what they've dialed in yet.
+ * is "stale" - what they hear doesn't match what they've dialed in yet.
  * The stale indicator tells them to click "Apply" to re-process.
- * Stage 2 parameters (EQ, compressor, etc.) update in real time — no staleness.
+ * Stage 2 parameters (EQ, compressor, etc.) update in real time - no staleness.
  */
 
 import { create } from 'zustand'
@@ -125,7 +125,7 @@ interface EngineState {
  * against the last applied params. Returns true if any param has changed.
  *
  * Also considers the case where a processed buffer exists but all params are
- * back to defaults — the user reset and wants to "un-process" via Apply.
+ * back to defaults - the user reset and wants to "un-process" via Apply.
  */
 export function computeIsStale(
   snapshot: EngineSnapshot,
@@ -133,14 +133,14 @@ export function computeIsStale(
   hasProcessed: boolean
 ): boolean {
   if (!applied) {
-    // No processing has been applied yet — stale if any Stage 1 param is non-default
+    // No processing has been applied yet - stale if any Stage 1 param is non-default
     // (i.e., pitch !== 0, formant !== 0, or speed !== 1.0)
     return snapshot.pitch !== 0 || snapshot.formant !== 0 || snapshot.speed !== 1.0
   }
 
   const paramsAtDefaults = snapshot.pitch === 0 && snapshot.formant === 0 && snapshot.speed === 1.0
 
-  // If a processed buffer exists but params are back to defaults, that's stale —
+  // If a processed buffer exists but params are back to defaults, that's stale -
   // the user reset and needs to Apply to revert to the original unprocessed audio.
   if (paramsAtDefaults && hasProcessed) {
     return true

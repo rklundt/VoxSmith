@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -46,7 +46,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     label: 'Pitch',
     short: 'Makes your voice higher or lower.',
     detail:
-      'Measured in semitones — negative values go deeper, positive go higher. ' +
+      'Measured in semitones - negative values go deeper, positive go higher. ' +
       'Large shifts (±12 or more) start to sound supernatural. ' +
       'For the most natural result, always adjust Formant when you change Pitch.',
     pairsWith: ['Formant'],
@@ -69,7 +69,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     short: 'Adds the sound of a physical space around your voice.',
     detail:
       'More reverb makes your voice sound like it is in a larger, more reflective space. ' +
-      'Combine with Room Size — a large room with high reverb sounds like a throne room; ' +
+      'Combine with Room Size - a large room with high reverb sounds like a throne room; ' +
       'a small room with high reverb sounds hollow and eerie.',
     pairsWith: ['Room Size', 'Speed', 'Wet/Dry Mix'],
     poweredBy: 'Tone.js (Reverb)',
@@ -81,7 +81,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Small values sound like a closet or cave alcove. ' +
       'Large values sound like a cathedral or open cavern. ' +
-      'Always adjust Room Size alongside Reverb — one without the other gives incomplete results.',
+      'Always adjust Room Size alongside Reverb - one without the other gives incomplete results.',
     pairsWith: ['Reverb'],
     poweredBy: 'Tone.js (Reverb)',
   },
@@ -102,7 +102,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     short: 'Controls how loud the voice sounds during preview.',
     detail:
       'Adjusts the playback loudness before effects are applied. ' +
-      'This does not affect the exported audio file — it is only for monitoring. ' +
+      'This does not affect the exported audio file - it is only for monitoring. ' +
       'If your speakers are quiet, turn this up instead of cranking system volume.',
     pairsWith: ['Compression Threshold'],
     poweredBy: 'Web Audio API (GainNode)',
@@ -116,7 +116,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Slow rates sound theatrical or deliberate. ' +
       'Fast rates sound anxious, elderly, or out of control. ' +
-      'Pair with Vibrato Depth — rate without depth has no audible effect.',
+      'Pair with Vibrato Depth - rate without depth has no audible effect.',
     pairsWith: ['Vibrato Depth', 'Tremolo Rate'],
     poweredBy: 'Tone.js (Vibrato)',
   },
@@ -127,7 +127,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Low depth adds a warm, subtle character. ' +
       'High depth creates an exaggerated, dramatic wobble. ' +
-      'Keep depth subtle for most characters — heavy vibrato is quickly distracting.',
+      'Keep depth subtle for most characters - heavy vibrato is quickly distracting.',
     pairsWith: ['Vibrato Rate', 'Tremolo Depth'],
     poweredBy: 'Tone.js (Vibrato)',
   },
@@ -160,9 +160,9 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Low intensity adds weathered, world-weary texture. ' +
       'High intensity sounds raspy, monstrous, or corrupted. ' +
-      'Avoid using the High-Pass Filter with Vocal Fry — it removes the low frequencies the effect lives in.',
+      'Avoid using the High-Pass Filter with Vocal Fry - it removes the low frequencies the effect lives in.',
     pairsWith: ['Pitch (low)', 'Wet/Dry Mix'],
-    poweredBy: 'Web Audio API (custom AudioWorklet)',
+    poweredBy: 'Web Audio API (AM synthesis via OscillatorNode + GainNode)',
   },
 
   breathiness: {
@@ -173,7 +173,18 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
       'High values sound like a whisper, a weak character, or a spirit. ' +
       'Pair with low Reverb for a close whisper, or high Reverb for a ghostly, distant effect.',
     pairsWith: ['Reverb', 'Speed (slow)', 'Wet/Dry Mix'],
-    poweredBy: 'Web Audio API (custom AudioWorklet)',
+    poweredBy: 'Web Audio API (filtered noise injection via AudioBufferSourceNode + BiquadFilterNode)',
+  },
+
+  breathiness2: {
+    label: 'Breathiness 2',
+    short: 'Close-mic breathy tone via vocal processing.',
+    detail:
+      'Duplicates the voice, strips the bass with a high-pass at 500 Hz, boosts frequencies above 8 kHz, ' +
+      'then compresses the airy upper track to make the breath noise consistent. ' +
+      'Blending this with the original creates a close-mic, intimate vocal tone.',
+    pairsWith: ['Breathiness', 'Reverb', 'Compression'],
+    poweredBy: 'Web Audio API (BiquadFilterNode + DynamicsCompressorNode)',
   },
 
   eq: {
@@ -195,7 +206,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Sounds louder than the threshold are reduced in volume. ' +
       'Lower the threshold to compress more of the signal. ' +
-      'Always use Noise Gate before Compression — compressing a noisy recording brings up the noise too.',
+      'Always use Noise Gate before Compression - compressing a noisy recording brings up the noise too.',
     pairsWith: ['Compression Ratio', 'Noise Gate'],
     poweredBy: 'Web Audio API (DynamicsCompressorNode)',
   },
@@ -206,7 +217,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'A ratio of 2:1 is gentle and natural. ' +
       'A ratio of 8:1 or higher is dense and intense. ' +
-      'Pair with Threshold — ratio without an appropriate threshold has little effect.',
+      'Pair with Threshold - ratio without an appropriate threshold has little effect.',
     pairsWith: ['Compression Threshold'],
     poweredBy: 'Web Audio API (DynamicsCompressorNode)',
   },
@@ -217,7 +228,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'A low cutoff (80-150Hz) just removes room rumble. ' +
       'A higher cutoff (300-500Hz) removes chest and weight, making the voice sound younger, thinner, or like a radio. ' +
-      'Do not use with Vocal Fry — it cancels out the effect.',
+      'Do not use with Vocal Fry - it cancels out the effect.',
     pairsWith: ['4-Band EQ'],
     poweredBy: 'Web Audio API (BiquadFilterNode)',
   },
@@ -228,9 +239,33 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Full Wet means the effect is completely applied. ' +
       'Full Dry means the effect is bypassed for this signal path. ' +
-      'Use this to add just a hint of an effect without overwhelming the voice — especially useful for Reverb and Vocal Fry.',
+      'Use this to add just a hint of an effect without overwhelming the voice - especially useful for Reverb and Vocal Fry.',
     pairsWith: ['All effects'],
     poweredBy: 'Web Audio API (GainNode)',
+  },
+
+  // ─── Waveform and Monitoring ────────────────────────────────────────
+
+  waveform: {
+    label: 'Waveform Display',
+    short: 'Visual representation of your audio file.',
+    detail:
+      'The waveform shows the shape of your audio over time. ' +
+      'Tall peaks are loud sections; quiet sections are nearly flat. ' +
+      'Click anywhere on the waveform to seek to that position during playback.',
+    pairsWith: ['Level Meter', 'Playback Controls'],
+    poweredBy: 'WaveSurfer.js',
+  },
+
+  levelMeter: {
+    label: 'Level Meter',
+    short: 'Shows how loud the audio is right now.',
+    detail:
+      'Green means safe volume levels. Yellow means approaching maximum. ' +
+      'Red means clipping - the audio is too loud and will distort. ' +
+      'If you see red, reduce the Volume or Output Gain before exporting.',
+    pairsWith: ['Volume', 'Compression Threshold'],
+    poweredBy: 'Web Audio API (AnalyserNode)',
   },
 
   // ─── Export and Processing ─────────────────────────────────────────
@@ -349,7 +384,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     short: 'Record multiple takes and keep the best one.',
     detail:
       'Every recording is saved as a numbered take. ' +
-      'Audition each before committing — fresh ears often choose a different take than you expect. ' +
+      'Audition each before committing - fresh ears often choose a different take than you expect. ' +
       'Record at least 2-3 takes of every line before deciding.',
     pairsWith: ['Punch-In Recording', 'Count-In'],
     poweredBy: 'Web Audio API (MediaRecorder)',
@@ -359,7 +394,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     label: 'Punch-In Recording',
     short: 'Re-record a specific section without redoing the whole take.',
     detail:
-      'Mark a start and end point on the waveform, then record — only that region is replaced. ' +
+      'Mark a start and end point on the waveform, then record - only that region is replaced. ' +
       'Use this to fix a single word or phrase in an otherwise good take. ' +
       'The rest of the take is preserved exactly.',
     pairsWith: ['Take Management', 'Waveform Display'],

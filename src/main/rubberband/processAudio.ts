@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * Stage 1 — Offline Audio Processing via Rubber Band CLI
+ * Stage 1 - Offline Audio Processing via Rubber Band CLI
  *
  * This module handles the entire Stage 1 pipeline:
  * 1. Receive an AudioProcessRequest (ArrayBuffer + parameters) from renderer via IPC
@@ -31,7 +31,7 @@
  * The Sprint 1 spike proved that rubberband-web (WASM AudioWorklet) has three
  * fatal limitations: no formant control, broken real-time tempo, and buffer
  * overruns. The native CLI binary solves all three because it processes the
- * entire file at once — no 128-sample block constraints.
+ * entire file at once - no 128-sample block constraints.
  *
  * SIGNAL FLOW:
  *   Renderer (IPC) → processAudio() → temp input.wav → rubberband CLI → temp output.wav → Renderer (IPC)
@@ -59,22 +59,22 @@ import { getRubberbandPath } from './binaryPath'
  * WAV files need a 44-byte header with format metadata, followed by the PCM data.
  * We write 32-bit IEEE float WAV (format code 3) to avoid quantization
  * artifacts. The old 16-bit PCM approach introduced audible quality loss,
- * especially when the two-pass formant shifting pipeline runs — each pass
+ * especially when the two-pass formant shifting pipeline runs - each pass
  * would compound the 16-bit quantization noise, causing a "robotic" sound.
  * 32-bit float preserves the full precision of the original AudioBuffer data.
  *
  * Rubber Band CLI reads WAV via libsndfile, which supports 32-bit float natively.
  *
- * @param filePath — Where to write the WAV file
- * @param audioData — Raw audio data as ArrayBuffer (Float32 interleaved samples)
- * @param sampleRate — Sample rate in Hz (e.g., 44100)
- * @param channels — Number of channels (1 = mono, 2 = stereo)
+ * @param filePath - Where to write the WAV file
+ * @param audioData - Raw audio data as ArrayBuffer (Float32 interleaved samples)
+ * @param sampleRate - Sample rate in Hz (e.g., 44100)
+ * @param channels - Number of channels (1 = mono, 2 = stereo)
  */
 function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: number, channels: number): void {
   const float32 = new Float32Array(audioData)
   const numSamples = float32.length
 
-  // 32-bit float: 4 bytes per sample, no conversion needed — Float32 data goes directly
+  // 32-bit float: 4 bytes per sample, no conversion needed - Float32 data goes directly
   const bytesPerSample = 4
   const byteRate = sampleRate * channels * bytesPerSample
   const blockAlign = channels * bytesPerSample
@@ -88,7 +88,7 @@ function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: numb
   header.writeUInt32LE(36 + dataSize, 4)         // ChunkSize (file size minus 8)
   header.write('WAVE', 8)                        // Format
 
-  // "fmt " sub-chunk — describes the audio format
+  // "fmt " sub-chunk - describes the audio format
   header.write('fmt ', 12)                       // Subchunk1ID
   header.writeUInt32LE(16, 16)                   // Subchunk1Size (16 for PCM/float)
   header.writeUInt16LE(3, 20)                    // AudioFormat (3 = IEEE float)
@@ -98,11 +98,11 @@ function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: numb
   header.writeUInt16LE(blockAlign, 32)           // BlockAlign
   header.writeUInt16LE(32, 34)                   // BitsPerSample (32-bit float)
 
-  // "data" sub-chunk — contains the actual audio samples
+  // "data" sub-chunk - contains the actual audio samples
   header.write('data', 36)                       // Subchunk2ID
   header.writeUInt32LE(dataSize, 40)             // Subchunk2Size
 
-  // Write header + Float32 data directly — no quantization conversion needed.
+  // Write header + Float32 data directly - no quantization conversion needed.
   // The Float32Array's underlying buffer is the raw IEEE 754 bytes.
   const dataBuffer = Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength)
   const fileBuffer = Buffer.concat([header, dataBuffer])
@@ -115,22 +115,22 @@ function writeWavFile(filePath: string, audioData: ArrayBuffer, sampleRate: numb
  * Parses the WAV header to find the data chunk, then converts the PCM samples
  * back to Float32 [-1.0, 1.0] format for the renderer's AudioContext.decodeAudioData().
  *
- * Actually, we return the raw WAV file bytes — the renderer will use
+ * Actually, we return the raw WAV file bytes - the renderer will use
  * AudioContext.decodeAudioData() which handles WAV parsing natively.
  *
- * @param filePath — Path to the WAV file to read
+ * @param filePath - Path to the WAV file to read
  * @returns The full WAV file as an ArrayBuffer (header + data)
  */
 function readWavFileAsArrayBuffer(filePath: string): ArrayBuffer {
   const buffer = fs.readFileSync(filePath)
-  // Return the raw WAV bytes — the renderer's decodeAudioData() handles parsing
+  // Return the raw WAV bytes - the renderer's decodeAudioData() handles parsing
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
 }
 
 /**
  * Estimates the duration of a WAV file from its header.
  *
- * @param filePath — Path to the WAV file
+ * @param filePath - Path to the WAV file
  * @returns Duration in seconds
  */
 function getWavDuration(filePath: string): number {
@@ -159,9 +159,9 @@ let activeProcess: ChildProcess | null = null
 /**
  * Spawns the Rubber Band CLI with the given arguments and waits for completion.
  *
- * @param rubberbandPath — Resolved path to the rubberband executable
- * @param args — CLI arguments (flags + input/output paths)
- * @param logger — Winston logger
+ * @param rubberbandPath - Resolved path to the rubberband executable
+ * @param args - CLI arguments (flags + input/output paths)
+ * @param logger - Winston logger
  * @returns Exit code from the CLI process
  * @throws Error if the process is killed (cancelled) or fails to spawn
  */
@@ -238,8 +238,8 @@ function runRubberband(
  *      formants preserved at (original + F) → net formant shift of F semitones
  *    - Tempo is applied only in pass 1 to avoid double time-stretching
  *
- * @param request — Audio data and processing parameters from the renderer
- * @param logger — Winston logger for diagnostics
+ * @param request - Audio data and processing parameters from the renderer
+ * @param logger - Winston logger for diagnostics
  * @returns AudioProcessResult with the processed audio or an error
  */
 export async function processAudio(
@@ -333,7 +333,7 @@ export async function processAudio(
         args.push('--pitch', request.pitch.toString())
       }
 
-      // Formant preservation — prevents the "chipmunk effect" when pitch-shifting.
+      // Formant preservation - prevents the "chipmunk effect" when pitch-shifting.
       // The --formant flag keeps the voice's resonant character (formants) at the
       // original position while only the pitch changes.
       if (request.preserveFormant) {
@@ -345,7 +345,7 @@ export async function processAudio(
         args.push('--tempo', request.tempo.toString())
       }
 
-      // High quality mode — slightly slower but cleaner output.
+      // High quality mode - slightly slower but cleaner output.
       args.push('--fine')
 
       // Input and output file paths (positional arguments, must come last)
@@ -392,7 +392,7 @@ export async function processAudio(
     logger.error(`Stage 1 processing failed: ${errorMsg}`)
     return { success: false, error: errorMsg, commandString: commandStrings.join(' → ') }
   } finally {
-    // Clean up ALL temp files — runs even if processing fails or is cancelled.
+    // Clean up ALL temp files - runs even if processing fails or is cancelled.
     // In two-pass mode, there's an additional intermediate file to clean up.
     for (const tempFile of [inputPath, midPath, outputPath]) {
       if (fs.existsSync(tempFile)) {

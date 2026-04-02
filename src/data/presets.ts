@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,12 +17,12 @@
  */
 
 /**
- * Preset Data Access — Renderer Side
+ * Preset Data Access - Renderer Side
  *
  * Provides typed access to preset operations via the window.voxsmith IPC bridge.
  * The renderer never reads/writes presets.json directly.
  *
- * Sprint 0: Stub — all methods delegate to IPC bridge.
+ * Sprint 0: Stub - all methods delegate to IPC bridge.
  * Sprint 5: Will be fully implemented with preset management logic.
  */
 

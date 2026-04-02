@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,14 +17,14 @@
  */
 
 /**
- * Postinstall Script — Binary Copy
+ * Postinstall Script - Binary Copy
  *
  * Runs automatically after `npm install` via the postinstall hook in package.json.
  *
  * Copies bundled binaries from node_modules to src/assets/ so they are available
  * for both development (electron-vite dev) and packaging (electron-builder).
  *
- * Neither binary is committed to git — this script is what makes the build
+ * Neither binary is committed to git - this script is what makes the build
  * self-contained after a fresh clone.
  */
 
@@ -87,7 +87,7 @@ try {
 // ─── Rubber Band CLI Binary ──────────────────────────────────────────────────
 // The native Rubber Band CLI binary (rubberband.exe) is used for Stage 1
 // offline processing (pitch, formant, tempo). It's downloaded separately
-// via scripts/fetch-rubberband.ts — here we just verify it exists.
+// via scripts/fetch-rubberband.ts - here we just verify it exists.
 
 try {
   const rubberbandExe = path.join(projectRoot, 'src', 'assets', 'rubberband', 'rubberband.exe')
@@ -101,7 +101,7 @@ try {
   console.error('  ✗ Failed to check Rubber Band CLI binary:', err)
 }
 
-// ─── Rubber Band WASM (Sprint 1 spike — retained for backwards compatibility) ─
+// ─── Rubber Band WASM (Sprint 1 spike - retained for backwards compatibility) ─
 
 try {
   const rubberbandSrc = path.join(projectRoot, 'node_modules', 'rubberband-web', 'dist')
@@ -111,7 +111,7 @@ try {
     copyRecursive(rubberbandSrc, rubberbandDest)
     console.log('  ✓ Rubber Band WASM files copied to src/assets/rubberband-wasm/')
   } else {
-    // Try alternate paths — rubberband-web may structure differently
+    // Try alternate paths - rubberband-web may structure differently
     const altSrc = path.join(projectRoot, 'node_modules', 'rubberband-web')
     const wasmFiles = fs.existsSync(altSrc)
       ? fs.readdirSync(altSrc).filter(f => f.endsWith('.wasm') || f.endsWith('.js'))
