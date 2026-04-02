@@ -22,17 +22,17 @@
  * Registers all IPC handlers that the renderer can invoke via window.voxsmith.
  * Each handler corresponds to a channel constant in src/shared/constants.ts.
  *
- * Sprint 0: Only SETTINGS_GET and SETTINGS_SAVE are functional.
- * All other handlers are stubs that log the call and return placeholder responses.
- * They will be implemented in their respective sprints.
+ * Sprint 5: Settings, presets (full CRUD + portraits), Stage 1 audio processing,
+ * and image file dialog are functional. Export and WAV dialogs are stubs.
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type winston from 'winston'
 import { IPC } from '../../shared/constants'
-import type { AppSettings, AudioProcessRequest } from '../../shared/types'
+import type { AppSettings, Preset, AudioProcessRequest } from '../../shared/types'
 import { loadSettings, saveSettingsOverride } from '../fileSystem/settings'
 import { processAudio, cancelProcessing } from '../rubberband/processAudio'
+import { loadAllPresets, savePreset, deletePreset, savePortrait, resolvePortraitUri } from '../fileSystem/presets'
 
 /**
  * Registers all IPC handlers.
@@ -65,19 +65,70 @@ export function registerIpcHandlers(logger: winston.Logger): void {
     }
   })
 
-  // ─── Presets (stubs - Sprint 5) ──────────────────────────────────────
+  // ─── Presets (Sprint 5) ──────────────────────────────────────────────
 
   ipcMain.handle(IPC.PRESET_LOAD_ALL, async () => {
-    logger.debug(`IPC: ${IPC.PRESET_LOAD_ALL} - stub`)
-    return { presets: [] }
+    logger.debug(`IPC: ${IPC.PRESET_LOAD_ALL} - loading all presets`)
+    try {
+      const library = loadAllPresets(logger)
+      // Resolve portrait URIs so the renderer can display images via file:// protocol.
+      // The stored paths are relative (e.g. "portraits/abc123.png") and need to be
+      // converted to full file:// URIs for the renderer's <img> tags.
+      for (const preset of library.presets) {
+        if (preset.portraitPath) {
+          const uri = resolvePortraitUri(preset.portraitPath)
+          if (uri) {
+            // Attach the resolved URI as a transient field for the renderer.
+            // The relative path stays in presets.json; the URI is only for display.
+            ;(preset as Preset & { portraitUri?: string }).portraitUri = uri
+          }
+        }
+      }
+      logger.debug(`IPC: ${IPC.PRESET_LOAD_ALL} - success (${library.presets.length} presets)`)
+      return library
+    } catch (err) {
+      logger.error(`IPC: ${IPC.PRESET_LOAD_ALL} - failed: ${err}`)
+      throw err
+    }
   })
 
-  ipcMain.handle(IPC.PRESET_SAVE, async (_event, preset) => {
-    logger.debug(`IPC: ${IPC.PRESET_SAVE} - stub (preset: ${preset?.name ?? 'unknown'})`)
+  ipcMain.handle(IPC.PRESET_SAVE, async (_event, preset: Preset) => {
+    logger.debug(`IPC: ${IPC.PRESET_SAVE} - saving preset: "${preset?.name ?? 'unknown'}"`)
+    try {
+      savePreset(preset, logger)
+      logger.debug(`IPC: ${IPC.PRESET_SAVE} - success`)
+    } catch (err) {
+      logger.error(`IPC: ${IPC.PRESET_SAVE} - failed: ${err}`)
+      throw err
+    }
   })
 
   ipcMain.handle(IPC.PRESET_DELETE, async (_event, presetId: string) => {
-    logger.debug(`IPC: ${IPC.PRESET_DELETE} - stub (id: ${presetId})`)
+    logger.debug(`IPC: ${IPC.PRESET_DELETE} - deleting preset: ${presetId}`)
+    try {
+      deletePreset(presetId, logger)
+      logger.debug(`IPC: ${IPC.PRESET_DELETE} - success`)
+    } catch (err) {
+      logger.error(`IPC: ${IPC.PRESET_DELETE} - failed: ${err}`)
+      throw err
+    }
+  })
+
+  ipcMain.handle(IPC.PRESET_SAVE_PORTRAIT, async (_event, args: { sourcePath: string; presetId: string }) => {
+    logger.debug(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - copying portrait for preset ${args.presetId}`)
+    try {
+      const relativePath = savePortrait(args.sourcePath, args.presetId, logger)
+      if (relativePath) {
+        // Also return the resolved file:// URI so the renderer can display it immediately
+        const uri = resolvePortraitUri(relativePath)
+        logger.debug(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - success: ${relativePath}`)
+        return { relativePath, uri }
+      }
+      return null
+    } catch (err) {
+      logger.error(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - failed: ${err}`)
+      return null
+    }
   })
 
   // ─── Export (stubs - Sprint 6) ───────────────────────────────────────
@@ -132,8 +183,35 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   })
 
   ipcMain.handle(IPC.DIALOG_OPEN_IMAGE, async () => {
-    logger.debug(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - stub`)
-    return null
+    logger.debug(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - opening image file dialog`)
+    try {
+      // Get the focused window so the dialog is modal to it.
+      // If no window is focused (unlikely), showOpenDialog works without a parent.
+      const win = BrowserWindow.getFocusedWindow()
+      const dialogOptions: Electron.OpenDialogOptions = {
+        title: 'Select Character Portrait',
+        filters: [
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] },
+        ],
+        properties: ['openFile'],
+      }
+
+      const result = win
+        ? await dialog.showOpenDialog(win, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions)
+
+      if (result.canceled || result.filePaths.length === 0) {
+        logger.debug(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - user cancelled`)
+        return null
+      }
+
+      const selectedPath = result.filePaths[0]
+      logger.debug(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - selected: ${selectedPath}`)
+      return selectedPath
+    } catch (err) {
+      logger.error(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - failed: ${err}`)
+      return null
+    }
   })
 
   logger.info('All IPC handlers registered')

@@ -332,7 +332,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
       'Load a preset instantly to recall every setting for that character. ' +
       'Use the Notes field to record performance direction so you remember the character months later. ' +
       'Add a portrait image so you can identify presets visually as your library grows.',
-    pairsWith: ['Emotion Sub-Presets', 'A/B Comparison'],
+    pairsWith: ['Emotion Sub-Presets', 'A/B Toggle'],
     poweredBy: 'Zustand (state) + presets.json (storage)',
   },
 
@@ -347,12 +347,13 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     poweredBy: 'Zustand (state) + presets.json (storage)',
   },
 
-  abComparison: {
-    label: 'A/B Comparison',
-    short: 'Toggle instantly between two presets while listening.',
+  abToggle: {
+    label: 'A/B Toggle',
+    short: 'Switch instantly between two loaded presets.',
     detail:
-      'Load one preset into slot A and another into slot B. ' +
-      'Toggle between them in real time to decide which version of a character sounds better on the same audio.',
+      'Load one preset into slot A and another into slot B, then toggle between them. ' +
+      'Stage 2 effects (reverb, EQ, etc.) switch instantly. Stage 1 settings (pitch, formant, speed) ' +
+      'update visually but require Apply to hear the change.',
     pairsWith: ['Character Preset'],
     poweredBy: 'Zustand (state)',
   },
@@ -363,7 +364,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     detail:
       'Bypass removes all effects instantly so you can compare the processed result against your raw recording. ' +
       'Use this to judge how much the effects are contributing before committing to a preset.',
-    pairsWith: ['A/B Comparison'],
+    pairsWith: ['A/B Toggle'],
     poweredBy: 'Web Audio API (GainNode routing)',
   },
 

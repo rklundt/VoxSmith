@@ -22,6 +22,10 @@ config/userSettingsOverride.json
 # User data
 userData/
 
+# Portrait images (user-specific, copied via preset system)
+portraits/*
+!portraits/.gitkeep
+
 # Environment
 .env
 .env.*

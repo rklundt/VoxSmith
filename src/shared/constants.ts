@@ -31,6 +31,7 @@ export const IPC = {
   PRESET_LOAD_ALL: 'preset:load-all',      // renderer → main: void → PresetLibrary
   PRESET_SAVE: 'preset:save',              // renderer → main: Preset → void
   PRESET_DELETE: 'preset:delete',          // renderer → main: presetId → void (also deletes portrait)
+  PRESET_SAVE_PORTRAIT: 'preset:save-portrait', // renderer → main: { sourcePath, presetId } → string | null (relative path)
 
   // File system - settings operations
   SETTINGS_GET: 'settings:get',            // renderer → main: void → AppSettings

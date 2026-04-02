@@ -43,6 +43,7 @@ const IPC = {
   PRESET_LOAD_ALL: 'preset:load-all',
   PRESET_SAVE: 'preset:save',
   PRESET_DELETE: 'preset:delete',
+  PRESET_SAVE_PORTRAIT: 'preset:save-portrait',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
   AUDIO_PROCESS: 'audio:process',
@@ -70,6 +71,8 @@ contextBridge.exposeInMainWorld('voxsmith', {
   loadAllPresets: () => ipcRenderer.invoke(IPC.PRESET_LOAD_ALL),
   savePreset: (preset: unknown) => ipcRenderer.invoke(IPC.PRESET_SAVE, preset),
   deletePreset: (id: string) => ipcRenderer.invoke(IPC.PRESET_DELETE, id),
+  savePortrait: (sourcePath: string, presetId: string) =>
+    ipcRenderer.invoke(IPC.PRESET_SAVE_PORTRAIT, { sourcePath, presetId }),
 
   // ─── Stage 1 - Offline Audio Processing ────────────────────────────
   // Sends raw audio + parameters to main process for Rubber Band CLI processing.
