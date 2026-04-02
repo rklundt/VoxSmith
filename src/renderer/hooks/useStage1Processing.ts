@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * useStage1Processing — Hook for Offline Audio Processing (Stage 1)
+ * useStage1Processing - Hook for Offline Audio Processing (Stage 1)
  *
  * Handles the "Apply" button workflow:
  * 1. User adjusts pitch/formant/tempo sliders (preview becomes "stale")
@@ -27,7 +27,7 @@
  * 5. The processed buffer is loaded into the AudioEngine for playback
  *
  * STALE PREVIEW PATTERN:
- * Stage 1 parameters are offline — they can't update in real time.
+ * Stage 1 parameters are offline - they can't update in real time.
  * When the user changes pitch/formant/tempo without clicking Apply,
  * the audio they hear is "stale" (processed with old params).
  * The engineStore tracks this via isStale, which the UI shows as an indicator.
@@ -59,7 +59,7 @@ export function useStage1Processing({ loadProcessedBuffer, getEngine }: UseStage
     const store = useEngineStore.getState()
 
     if (!engine.originalBuffer) {
-      console.warn('[Stage1] No audio file loaded — cannot apply')
+      console.warn('[Stage1] No audio file loaded - cannot apply')
       return
     }
 
@@ -69,7 +69,7 @@ export function useStage1Processing({ loadProcessedBuffer, getEngine }: UseStage
     const formant = snapshot.formant
     const speed = snapshot.speed
 
-    // If all Stage 1 params are at default, skip processing —
+    // If all Stage 1 params are at default, skip processing -
     // clear the processed buffer so the original plays directly.
     // This handles the "reset → Apply" flow: the user wants to revert
     // to the unprocessed original without running Rubber Band.

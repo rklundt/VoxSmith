@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,12 +17,12 @@
  */
 
 /**
- * Settings Data Access — Renderer Side
+ * Settings Data Access - Renderer Side
  *
  * Provides typed access to app settings via the window.voxsmith IPC bridge.
- * The renderer never reads files directly — all settings access goes through main via IPC.
+ * The renderer never reads files directly - all settings access goes through main via IPC.
  *
- * Sprint 0: Stub — getSettings and saveSettings are functional.
+ * Sprint 0: Stub - getSettings and saveSettings are functional.
  */
 
 import type { AppSettings } from '../shared/types'

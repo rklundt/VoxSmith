@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * VoxSmith — Preload Script
+ * VoxSmith - Preload Script
  *
  * The ONLY bridge between the main process and the renderer process.
  * Uses contextBridge.exposeInMainWorld to expose a typed window.voxsmith API.
@@ -32,7 +32,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 /**
- * IPC channel names — duplicated here because the preload script
+ * IPC channel names - duplicated here because the preload script
  * runs in a sandboxed context and cannot import from src/shared.
  * These MUST stay in sync with src/shared/constants.ts.
  *
@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld('voxsmith', {
   savePreset: (preset: unknown) => ipcRenderer.invoke(IPC.PRESET_SAVE, preset),
   deletePreset: (id: string) => ipcRenderer.invoke(IPC.PRESET_DELETE, id),
 
-  // ─── Stage 1 — Offline Audio Processing ────────────────────────────
+  // ─── Stage 1 - Offline Audio Processing ────────────────────────────
   // Sends raw audio + parameters to main process for Rubber Band CLI processing.
   // Returns processed audio as ArrayBuffer or an error.
   processAudio: (request: unknown) => ipcRenderer.invoke(IPC.AUDIO_PROCESS, request),

@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,14 +17,16 @@
  */
 
 /**
- * ControlPanel — Main Audio Controls UI (Sprint 2)
+ * ControlPanel - Main Audio Controls UI (Sprint 3)
  *
  * This is the primary interface for VoxSmith. It provides:
  * - File loading (drag-and-drop or button)
  * - Stage 1 controls (pitch, formant, tempo) with Apply button + stale indicator
- * - Stage 2 controls (EQ, compressor, high-pass) that update in real time
- * - Playback controls (play, pause, stop)
- * - Volume control
+ * - Stage 2 controls split into Basic and Advanced modes:
+ *     Basic:  reverb (amount + room size), vibrato, tremolo, vocal fry, breathiness
+ *     Advanced: EQ bands, compressor, high-pass, wet/dry per effect
+ * - Playback controls (play, pause, stop) with volume
+ * - Bypass toggle for instant A/B comparison
  *
  * ARCHITECTURE NOTES:
  * - This component reads state from the Zustand engineStore
@@ -39,12 +41,19 @@ import { DEFAULT_ENGINE_SNAPSHOT } from '../../../shared/constants'
 import { TOOLTIPS } from '../../../shared/tooltips'
 import { useAudioEngine } from '../../hooks/useAudioEngine'
 import { useStage1Processing } from '../../hooks/useStage1Processing'
+import type { EffectName, EQBand } from '../../../shared/types'
 
 export function ControlPanel(): React.ReactElement {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // File loading error — shown as a friendly popup in the UI
+  // File loading error - shown as a friendly popup in the UI
   const [fileError, setFileError] = useState<string | null>(null)
+
+  // Basic/Advanced mode toggle - Advanced reveals EQ, compressor, high-pass, wet/dry
+  const [advancedMode, setAdvancedMode] = useState(false)
+
+  // Loop mode - when checked, audio loops seamlessly until stop or unchecked
+  const [loopEnabled, setLoopEnabled] = useState(false)
 
   // ─── Store State ────────────────────────────────────────────────────
   const snapshot = useEngineStore((s) => s.snapshot)
@@ -78,6 +87,16 @@ export function ControlPanel(): React.ReactElement {
     setHighPassFrequency,
     setCompressorThreshold,
     setCompressorRatio,
+    setVibrato,
+    setTremolo,
+    setReverb,
+    setVocalFry,
+    setBreathiness,
+    setBreathiness2,
+    setWetDry,
+    setBypass,
+    setLoop,
+    setEQBand,
   } = useAudioEngine()
 
   const { applyStage1, cancelStage1 } = useStage1Processing({
@@ -154,6 +173,68 @@ export function ControlPanel(): React.ReactElement {
   // ─── Stage 2 Parameter Handlers ─────────────────────────────────────
   // These update BOTH the store AND the engine in real time (no Apply needed).
 
+  // ── Basic Effects ──────────────────────────────────────────────────
+
+  const handleReverbAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('reverbAmount', value)
+    // Keep wetDryMix.reverb in sync so preset save/load works correctly.
+    // The "Reverb Amount" slider IS the reverb wet level in Basic mode.
+    updateParam('wetDryMix', { ...snapshot.wetDryMix, reverb: value })
+    setReverb(snapshot.reverbRoomSize, value)
+    setWetDry('reverb', value)
+  }, [updateParam, setReverb, setWetDry, snapshot.reverbRoomSize, snapshot.wetDryMix])
+
+  const handleReverbRoomSizeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('reverbRoomSize', value)
+    setReverb(value, snapshot.reverbAmount)
+  }, [updateParam, setReverb, snapshot.reverbAmount])
+
+  const handleVibratoRateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('vibratoRate', value)
+    setVibrato(value, snapshot.vibratoDepth)
+  }, [updateParam, setVibrato, snapshot.vibratoDepth])
+
+  const handleVibratoDepthChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('vibratoDepth', value)
+    setVibrato(snapshot.vibratoRate, value)
+  }, [updateParam, setVibrato, snapshot.vibratoRate])
+
+  const handleTremoloRateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('tremoloRate', value)
+    setTremolo(value, snapshot.tremoloDepth)
+  }, [updateParam, setTremolo, snapshot.tremoloDepth])
+
+  const handleTremoloDepthChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('tremoloDepth', value)
+    setTremolo(snapshot.tremoloRate, value)
+  }, [updateParam, setTremolo, snapshot.tremoloRate])
+
+  const handleVocalFryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('vocalFryIntensity', value)
+    setVocalFry(value)
+  }, [updateParam, setVocalFry])
+
+  const handleBreathinessChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('breathiness', value)
+    setBreathiness(value)
+  }, [updateParam, setBreathiness])
+
+  const handleBreathiness2Change = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('breathiness2', value)
+    setBreathiness2(value)
+  }, [updateParam, setBreathiness2])
+
+  // ── Advanced Effects (EQ, Compressor, High-Pass, Wet/Dry) ──────────
+
   const handleHighPassChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value)
     updateParam('highPassFrequency', value)
@@ -176,10 +257,30 @@ export function ControlPanel(): React.ReactElement {
     setVolume(Number(e.target.value))
   }, [setVolume])
 
+  // EQ band handlers - update the specific band in the snapshot's eq array.
+  const handleEQGainChange = useCallback((index: number, gain: number) => {
+    const newEQ = snapshot.eq.map((band: EQBand, i: number) =>
+      i === index ? { ...band, gain } : band
+    )
+    updateParam('eq', newEQ)
+    setEQBand(index, gain, snapshot.eq[index].frequency)
+  }, [updateParam, setEQBand, snapshot.eq])
+
+  // Wet/dry mix handlers - update the nested wetDryMix record in the snapshot.
+  const handleWetDryChange = useCallback((effect: EffectName, mix: number) => {
+    const newMix = { ...snapshot.wetDryMix, [effect]: mix }
+    updateParam('wetDryMix', newMix)
+    setWetDry(effect, mix)
+  }, [updateParam, setWetDry, snapshot.wetDryMix])
+
+  // Bypass toggle
+  const handleBypassToggle = useCallback(() => {
+    const newBypassed = !snapshot.bypassed
+    updateParam('bypassed', newBypassed)
+    setBypass(newBypassed)
+  }, [updateParam, setBypass, snapshot.bypassed])
+
   // ─── Reset Handlers ─────────────────────────────────────────────────
-  // Stage 1 reset: sets pitch/formant/speed back to defaults in the store.
-  // The user still needs to click Apply to re-process with the default values
-  // (or if all are at default, Apply will clear the processed buffer entirely).
 
   const resetStage1 = useCallback(() => {
     updateParam('pitch', DEFAULT_ENGINE_SNAPSHOT.pitch)
@@ -187,21 +288,63 @@ export function ControlPanel(): React.ReactElement {
     updateParam('speed', DEFAULT_ENGINE_SNAPSHOT.speed)
   }, [updateParam])
 
-  // Stage 2 reset: sets high-pass/compressor back to defaults and immediately
-  // updates the engine nodes (no Apply needed — these are real-time effects).
-
+  // Reset all Stage 2 effects to defaults and sync to engine
   const resetStage2 = useCallback(() => {
-    updateParam('highPassFrequency', DEFAULT_ENGINE_SNAPSHOT.highPassFrequency)
-    updateParam('compressorThreshold', DEFAULT_ENGINE_SNAPSHOT.compressorThreshold)
-    updateParam('compressorRatio', DEFAULT_ENGINE_SNAPSHOT.compressorRatio)
-    setHighPassFrequency(DEFAULT_ENGINE_SNAPSHOT.highPassFrequency)
-    setCompressorThreshold(DEFAULT_ENGINE_SNAPSHOT.compressorThreshold)
-    setCompressorRatio(DEFAULT_ENGINE_SNAPSHOT.compressorRatio)
-  }, [updateParam, setHighPassFrequency, setCompressorThreshold, setCompressorRatio])
+    const d = DEFAULT_ENGINE_SNAPSHOT
+
+    // Inline effects
+    updateParam('highPassFrequency', d.highPassFrequency)
+    updateParam('compressorThreshold', d.compressorThreshold)
+    updateParam('compressorRatio', d.compressorRatio)
+    setHighPassFrequency(d.highPassFrequency)
+    setCompressorThreshold(d.compressorThreshold)
+    setCompressorRatio(d.compressorRatio)
+
+    // Tone.js effects
+    updateParam('reverbAmount', d.reverbAmount)
+    updateParam('reverbRoomSize', d.reverbRoomSize)
+    updateParam('vibratoRate', d.vibratoRate)
+    updateParam('vibratoDepth', d.vibratoDepth)
+    updateParam('tremoloRate', d.tremoloRate)
+    updateParam('tremoloDepth', d.tremoloDepth)
+    setReverb(d.reverbRoomSize, d.reverbAmount)
+    setVibrato(d.vibratoRate, d.vibratoDepth)
+    setTremolo(d.tremoloRate, d.tremoloDepth)
+
+    // Custom effects
+    updateParam('vocalFryIntensity', d.vocalFryIntensity)
+    updateParam('breathiness', d.breathiness)
+    updateParam('breathiness2', d.breathiness2)
+    setVocalFry(d.vocalFryIntensity)
+    setBreathiness(d.breathiness)
+    setBreathiness2(d.breathiness2)
+
+    // Wet/dry
+    updateParam('wetDryMix', d.wetDryMix)
+    setWetDry('vibrato', d.wetDryMix.vibrato)
+    setWetDry('tremolo', d.wetDryMix.tremolo)
+    setWetDry('reverb', d.wetDryMix.reverb)
+    setWetDry('vocalFry', d.wetDryMix.vocalFry)
+    setWetDry('breathiness', d.wetDryMix.breathiness)
+    setWetDry('breathiness2', d.wetDryMix.breathiness2)
+
+    // EQ bands
+    updateParam('eq', d.eq)
+    d.eq.forEach((band: EQBand, i: number) => setEQBand(i, band.gain, band.frequency))
+
+    // Bypass off
+    updateParam('bypassed', false)
+    setBypass(false)
+  }, [updateParam, setHighPassFrequency, setCompressorThreshold, setCompressorRatio,
+      setReverb, setVibrato, setTremolo, setVocalFry, setBreathiness, setBreathiness2,
+      setWetDry, setEQBand, setBypass])
 
   // ─── Render ─────────────────────────────────────────────────────────
 
   const isProcessing = stage1Status === 'processing'
+
+  // EQ band labels for display
+  const eqLabels = ['Low (200 Hz)', 'Low-Mid (800 Hz)', 'Hi-Mid (2.5 kHz)', 'High (8 kHz)']
 
   return (
     <div
@@ -216,11 +359,30 @@ export function ControlPanel(): React.ReactElement {
       onDragOver={handleDragOver}
     >
       {/* ─── Header ──────────────────────────────────────────────────── */}
-      <h1 style={{ margin: '0 0 8px 0', fontSize: '24px', color: '#64b5f6' }}>
-        VoxSmith
-      </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <h1 style={{ margin: 0, fontSize: '24px', color: '#64b5f6' }}>
+          VoxSmith
+        </h1>
+        {/* Bypass toggle - always visible for quick A/B comparison */}
+        <button
+          onClick={handleBypassToggle}
+          style={{
+            padding: '4px 12px',
+            borderRadius: '4px',
+            border: snapshot.bypassed ? '1px solid #ff9800' : '1px solid #444',
+            backgroundColor: snapshot.bypassed ? '#332200' : '#1a1a2e',
+            color: snapshot.bypassed ? '#ff9800' : '#888',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 600,
+          }}
+          title={TOOLTIPS.bypass.detail}
+        >
+          {snapshot.bypassed ? 'BYPASSED' : 'Bypass'}
+        </button>
+      </div>
       <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#888' }}>
-        Sprint 2 — Core Audio Engine + Stage 1 Pipeline
+        Sprint 3 - Advanced Effects Chain
       </p>
 
       {/* ─── File Loading ────────────────────────────────────────────── */}
@@ -254,7 +416,7 @@ export function ControlPanel(): React.ReactElement {
           )}
         </div>
 
-        {/* File loading error — shown as a friendly popup in the UI */}
+        {/* File loading error */}
         {fileError && (
           <div style={{
             background: '#3e0d0d',
@@ -274,7 +436,7 @@ export function ControlPanel(): React.ReactElement {
               onClick={() => setFileError(null)}
               style={{ cursor: 'pointer', color: '#ef9a9a', fontWeight: 'bold', flexShrink: 0 }}
             >
-              ✕
+              X
             </span>
           </div>
         )}
@@ -299,6 +461,21 @@ export function ControlPanel(): React.ReactElement {
             Stop
           </button>
 
+          {/* Loop checkbox - audio repeats seamlessly until stop or unchecked */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={loopEnabled}
+              onChange={(e) => {
+                const checked = e.target.checked
+                setLoopEnabled(checked)
+                setLoop(checked)
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '13px', color: '#aaa' }}>Loop</span>
+          </label>
+
           {/* Volume slider */}
           <label style={{ marginLeft: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '13px' }}>Volume</span>
@@ -322,19 +499,14 @@ export function ControlPanel(): React.ReactElement {
       {/* ─── Stage 1: Offline Processing (Pitch / Formant / Tempo) ──── */}
       <section style={{ marginBottom: '24px' }}>
         <h2 style={sectionHeaderStyle}>
-          Stage 1 — Pitch / Formant / Speed
+          Stage 1 - Pitch / Formant / Speed
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
-            (offline — click Apply to process)
+            (offline - click Apply to process)
           </span>
-          <span
-            onClick={resetStage1}
-            style={resetLinkStyle}
-          >
-            reset
-          </span>
+          <span onClick={resetStage1} style={resetLinkStyle}>reset</span>
         </h2>
 
-        {/* Stale indicator — visible when dialed params don't match processed audio */}
+        {/* Stale indicator */}
         {hasFile && isStale && stage1Status !== 'processing' && (
           <div style={{
             background: '#332800',
@@ -345,7 +517,7 @@ export function ControlPanel(): React.ReactElement {
             fontSize: '13px',
             color: '#ffd54f',
           }}>
-            Preview is outdated — click <strong>Apply</strong> to hear these changes.
+            Preview is outdated - click <strong>Apply</strong> to hear these changes.
           </div>
         )}
 
@@ -379,52 +551,34 @@ export function ControlPanel(): React.ReactElement {
           </div>
         )}
 
-        {/* Pitch slider: -24 to +24 semitones.
-            Disabled during processing — Stage 1 params require offline processing,
-            so changing them mid-flight would be confusing. Re-enabled after completion. */}
         <SliderControl
           label="Pitch"
           value={snapshot.pitch}
-          min={-24}
-          max={24}
-          step={1}
-          unit="st"
-          tooltipKey="pitch"
+          min={-24} max={24} step={1}
+          unit="st" tooltipKey="pitch"
           disabled={isProcessing}
           onChange={handlePitchChange}
         />
 
-        {/* Formant slider: DISABLED for Sprint 2.
-            The two-pass Rubber Band CLI approach (shift everything → shift pitch back
-            with --formant preservation) introduces unacceptable artifacts.
-            Re-enabled in a future sprint when we integrate the Rubber Band C++ library
-            API directly via Node.js native addon — the API's setFormantScale() method
-            provides independent formant shifting in a single pass with no quality loss.
-            See docs/phasesAndSprints.md for the re-enablement user story. */}
+        {/* Formant slider: DISABLED - two-pass CLI artifacts.
+            Re-enabled when native Rubber Band addon provides setFormantScale(). */}
         <SliderControl
           label="Formant"
           value={snapshot.formant}
-          min={-1}
-          max={1}
-          step={0.01}
-          unit="oct"
-          tooltipKey="formant"
+          min={-1} max={1} step={0.01}
+          unit="oct" tooltipKey="formant"
           disabled={true}
           onChange={handleFormantChange}
         />
         <div style={{ fontSize: '11px', color: '#666', marginTop: '-4px', marginBottom: '8px', marginLeft: '122px' }}>
-          Disabled — requires native Rubber Band library integration (future sprint)
+          Disabled - requires native Rubber Band library integration (future sprint)
         </div>
 
-        {/* Speed/tempo slider: 0.5x to 2.0x */}
         <SliderControl
           label="Speed"
           value={snapshot.speed}
-          min={0.5}
-          max={2.0}
-          step={0.05}
-          unit="x"
-          tooltipKey="speed"
+          min={0.5} max={2.0} step={0.05}
+          unit="x" tooltipKey="speed"
           disabled={isProcessing}
           onChange={handleSpeedChange}
         />
@@ -458,53 +612,178 @@ export function ControlPanel(): React.ReactElement {
       {/* ─── Stage 2: Real-Time Effects ──────────────────────────────── */}
       <section style={{ marginBottom: '24px' }}>
         <h2 style={sectionHeaderStyle}>
-          Stage 2 — Real-Time Effects
+          Stage 2 - Real-Time Effects
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
             (updates live)
           </span>
-          <span
-            onClick={resetStage2}
-            style={resetLinkStyle}
-          >
-            reset
-          </span>
+          <span onClick={resetStage2} style={resetLinkStyle}>reset</span>
         </h2>
 
-        {/* High-Pass Filter */}
+        {/* Basic/Advanced mode toggle */}
+        <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setAdvancedMode(!advancedMode)}
+            style={{
+              padding: '3px 10px',
+              borderRadius: '4px',
+              border: '1px solid #444',
+              backgroundColor: advancedMode ? '#2a3a5e' : '#1a1a2e',
+              color: advancedMode ? '#64b5f6' : '#888',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 500,
+            }}
+          >
+            {advancedMode ? 'Advanced Mode' : 'Basic Mode'}
+          </button>
+          <span style={{ fontSize: '11px', color: '#666' }}>
+            {advancedMode ? 'Showing EQ, compressor, high-pass, wet/dry controls' : 'Click to reveal advanced controls'}
+          </span>
+        </div>
+
+        {/* ── Reverb ──────────────────────────────────────────────────── */}
         <SliderControl
-          label="High-Pass"
-          value={snapshot.highPassFrequency}
-          min={20}
-          max={500}
-          step={1}
-          unit="Hz"
-          tooltipKey="highPass"
-          onChange={handleHighPassChange}
+          label="Reverb"
+          value={snapshot.reverbAmount}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="reverb"
+          onChange={handleReverbAmountChange}
+        />
+        <SliderControl
+          label="Room Size"
+          value={snapshot.reverbRoomSize}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="roomSize"
+          onChange={handleReverbRoomSizeChange}
         />
 
-        {/* Compressor Threshold */}
+        {/* ── Vibrato ─────────────────────────────────────────────────── */}
         <SliderControl
-          label="Comp Threshold"
-          value={snapshot.compressorThreshold}
-          min={-60}
-          max={0}
-          step={1}
-          unit="dB"
-          tooltipKey="compressorThreshold"
-          onChange={handleCompThresholdChange}
+          label="Vibrato Depth"
+          value={snapshot.vibratoDepth}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="vibratoDepth"
+          onChange={handleVibratoDepthChange}
+        />
+        <SliderControl
+          label="Vibrato Rate"
+          value={snapshot.vibratoRate}
+          min={1} max={15} step={0.5}
+          unit="Hz" tooltipKey="vibratoRate"
+          onChange={handleVibratoRateChange}
         />
 
-        {/* Compressor Ratio */}
+        {/* ── Tremolo ─────────────────────────────────────────────────── */}
         <SliderControl
-          label="Comp Ratio"
-          value={snapshot.compressorRatio}
-          min={1}
-          max={20}
-          step={0.5}
-          unit=":1"
-          tooltipKey="compressorRatio"
-          onChange={handleCompRatioChange}
+          label="Tremolo Depth"
+          value={snapshot.tremoloDepth}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="tremoloDepth"
+          onChange={handleTremoloDepthChange}
         />
+        <SliderControl
+          label="Tremolo Rate"
+          value={snapshot.tremoloRate}
+          min={1} max={15} step={0.5}
+          unit="Hz" tooltipKey="tremoloRate"
+          onChange={handleTremoloRateChange}
+        />
+
+        {/* ── Vocal Fry ───────────────────────────────────────────────── */}
+        <SliderControl
+          label="Vocal Fry"
+          value={snapshot.vocalFryIntensity}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="vocalFry"
+          onChange={handleVocalFryChange}
+        />
+
+        {/* ── Breathiness ─────────────────────────────────────────────── */}
+        <SliderControl
+          label="Breathiness"
+          value={snapshot.breathiness}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="breathiness"
+          onChange={handleBreathinessChange}
+        />
+
+        {/* ── Breathiness 2 ──────────────────────────────────────────── */}
+        <SliderControl
+          label="Breathiness 2"
+          value={snapshot.breathiness2}
+          min={0} max={1} step={0.01}
+          unit="" tooltipKey="breathiness2"
+          onChange={handleBreathiness2Change}
+        />
+
+        {/* ── Advanced Controls (EQ, Compressor, High-Pass, Wet/Dry) ── */}
+        {advancedMode && (
+          <>
+            {/* ── 4-Band EQ ─────────────────────────────────────────── */}
+            <h3 style={subHeaderStyle}>
+              4-Band EQ
+              <HelpTooltip detail={TOOLTIPS.eq.detail} pairsWith={TOOLTIPS.eq.pairsWith} />
+            </h3>
+            {snapshot.eq.map((band: EQBand, i: number) => (
+              <SliderControl
+                key={i}
+                label={eqLabels[i]}
+                value={band.gain}
+                min={-12} max={12} step={0.5}
+                unit="dB"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleEQGainChange(i, Number(e.target.value))
+                }
+              />
+            ))}
+
+            {/* ── High-Pass Filter ──────────────────────────────────── */}
+            <h3 style={subHeaderStyle}>Filters & Dynamics</h3>
+            <SliderControl
+              label="High-Pass"
+              value={snapshot.highPassFrequency}
+              min={20} max={500} step={1}
+              unit="Hz" tooltipKey="highPass"
+              onChange={handleHighPassChange}
+            />
+
+            {/* ── Compressor ────────────────────────────────────────── */}
+            <SliderControl
+              label="Comp Threshold"
+              value={snapshot.compressorThreshold}
+              min={-60} max={0} step={1}
+              unit="dB" tooltipKey="compressorThreshold"
+              onChange={handleCompThresholdChange}
+            />
+            <SliderControl
+              label="Comp Ratio"
+              value={snapshot.compressorRatio}
+              min={1} max={20} step={0.5}
+              unit=":1" tooltipKey="compressorRatio"
+              onChange={handleCompRatioChange}
+            />
+
+            {/* ── Per-Effect Wet/Dry ────────────────────────────────── */}
+            <h3 style={subHeaderStyle}>
+              Wet/Dry Mix
+              <HelpTooltip detail={TOOLTIPS.wetDry.detail} pairsWith={TOOLTIPS.wetDry.pairsWith} />
+            </h3>
+            {(['vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb'] as EffectName[]).map(
+              (effect) => (
+                <SliderControl
+                  key={effect}
+                  label={effect.charAt(0).toUpperCase() + effect.slice(1).replace(/([A-Z])/g, ' $1')}
+                  value={snapshot.wetDryMix[effect]}
+                  min={0} max={1} step={0.01}
+                  unit=""
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    handleWetDryChange(effect, Number(e.target.value))
+                  }
+                />
+              )
+            )}
+          </>
+        )}
       </section>
 
       {/* ─── Debug Info ──────────────────────────────────────────────── */}
@@ -517,6 +796,8 @@ export function ControlPanel(): React.ReactElement {
   hasProcessed,
   isPlaying,
   isStale,
+  bypassed: snapshot.bypassed,
+  advancedMode,
   stage1Status,
   stage1Params: {
     pitch: snapshot.pitch,
@@ -524,10 +805,20 @@ export function ControlPanel(): React.ReactElement {
     speed: snapshot.speed,
   },
   stage2Params: {
+    reverb: snapshot.reverbAmount,
+    roomSize: snapshot.reverbRoomSize,
+    vibratoRate: snapshot.vibratoRate,
+    vibratoDepth: snapshot.vibratoDepth,
+    tremoloRate: snapshot.tremoloRate,
+    tremoloDepth: snapshot.tremoloDepth,
+    vocalFry: snapshot.vocalFryIntensity,
+    breathiness: snapshot.breathiness,
+    breathiness2: snapshot.breathiness2,
     highPass: snapshot.highPassFrequency,
     compThreshold: snapshot.compressorThreshold,
     compRatio: snapshot.compressorRatio,
   },
+  wetDryMix: snapshot.wetDryMix,
   volume,
 }, null, 2)}
           </pre>
@@ -559,7 +850,7 @@ function HelpTooltip({ detail, pairsWith }: HelpTooltipProps): React.ReactElemen
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleMouseEnter = () => {
-    // ~200ms delay — half the default browser title delay (~400ms)
+    // ~200ms delay - half the default browser title delay (~400ms)
     timerRef.current = setTimeout(() => setVisible(true), 200)
   }
 
@@ -590,8 +881,7 @@ function HelpTooltip({ detail, pairsWith }: HelpTooltipProps): React.ReactElemen
         ?
       </span>
 
-      {/* Tooltip popup — positioned below the "?" icon, anchored left
-          so it flows into the slider area and never overlaps the panel border */}
+      {/* Tooltip popup */}
       {visible && (
         <div style={{
           position: 'absolute',
@@ -604,7 +894,6 @@ function HelpTooltip({ detail, pairsWith }: HelpTooltipProps): React.ReactElemen
           fontSize: '12px',
           lineHeight: '1.5',
           color: '#d0d0d0',
-          // Constrain width so it stays within the panel area
           width: '280px',
           maxWidth: 'calc(100vw - 80px)',
           whiteSpace: 'normal',
@@ -632,7 +921,7 @@ interface SliderControlProps {
   max: number
   step: number
   unit: string
-  /** Key into TOOLTIPS object — if provided, shows tooltip on hover */
+  /** Key into TOOLTIPS object - if provided, shows tooltip on hover */
   tooltipKey?: string
   /** Whether the slider is disabled (e.g., during Stage 1 processing) */
   disabled?: boolean
@@ -641,18 +930,13 @@ interface SliderControlProps {
 
 /**
  * A labeled slider with current value display and optional tooltip.
- *
- * Tooltip behavior:
- * - Hovering over the "?" icon shows detail text + pairings in a custom popup (~200ms delay)
- * - Tooltip content is pulled from src/shared/tooltips.ts (single source of truth)
- *
- * Simple inline component — will be replaced by a proper Knob/Slider control
- * component in Sprint 3 when the design system is built.
+ * Tooltip content is pulled from src/shared/tooltips.ts (single source of truth).
  */
 function SliderControl({ label, value, min, max, step, unit, tooltipKey, disabled, onChange }: SliderControlProps): React.ReactElement {
   // Format the display value based on the unit type
   const displayValue = unit === 'x' ? value.toFixed(2) :
     unit === 'oct' ? value.toFixed(2) :
+    unit === '' ? value.toFixed(2) :
     String(Math.round(value))
 
   // Look up tooltip content if a key was provided
@@ -692,6 +976,16 @@ const sectionHeaderStyle: React.CSSProperties = {
   color: '#b0bec5',
   borderBottom: '1px solid #333',
   paddingBottom: '6px',
+}
+
+const subHeaderStyle: React.CSSProperties = {
+  fontSize: '13px',
+  fontWeight: 600,
+  margin: '16px 0 8px 0',
+  color: '#90a4ae',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
 }
 
 const resetLinkStyle: React.CSSProperties = {

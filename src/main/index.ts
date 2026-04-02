@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * VoxSmith — Main Process Entry Point
+ * VoxSmith - Main Process Entry Point
  *
  * Responsibilities:
  * - App lifecycle (ready, window-all-closed, activate)
@@ -40,7 +40,7 @@ import { registerIpcHandlers } from './ipc/index'
 // Load settings first (before logger, since settings control log level)
 const settings = loadSettings()
 
-// Initialize session logging — creates log file and purges old ones
+// Initialize session logging - creates log file and purges old ones
 const logger = initializeLogging(
   settings.logging.maxSessionFiles,
   settings.logging.logLevel
@@ -67,7 +67,7 @@ function configureCSP(): void {
       ? // Dev: allow inline scripts (Vite HMR), localhost connections, and WASM.
         // 'unsafe-eval' is required because rubberband-web's Emscripten-compiled
         // bundle calls new Function() internally for its WASM dispatch tables.
-        // 'wasm-unsafe-eval' alone only covers WebAssembly.instantiate/compile —
+        // 'wasm-unsafe-eval' alone only covers WebAssembly.instantiate/compile -
         // it does NOT cover new Function() string evaluation, which Emscripten uses.
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
@@ -155,7 +155,7 @@ app.whenReady().then(() => {
 // Quit when all windows are closed (Windows/Linux behavior)
 // macOS apps typically stay open until Cmd+Q
 app.on('window-all-closed', () => {
-  logger.info('All windows closed — quitting')
+  logger.info('All windows closed - quitting')
   if (process.platform !== 'darwin') {
     app.quit()
   }

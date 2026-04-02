@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,15 +17,15 @@
  */
 
 /**
- * SpikeTestUI — Sprint 1 Rubber Band WASM Spike (COMPLETED)
+ * SpikeTestUI - Sprint 1 Rubber Band WASM Spike (COMPLETED)
  *
  * STATUS: Spike complete. This component will be removed in Sprint 2.
  *
  * FINDINGS SUMMARY:
- * 1. rubberband-web WASM loads in Electron AudioWorklet — PASS (with unsafe-eval CSP)
- * 2. setPitch() produces audible pitch changes — PASS
- * 3. setTempo() does NOT function in real-time AudioWorklet mode — FAIL (buffer overrun)
- * 4. No setFormant() API exists — CONFIRMED ABSENT
+ * 1. rubberband-web WASM loads in Electron AudioWorklet - PASS (with unsafe-eval CSP)
+ * 2. setPitch() produces audible pitch changes - PASS
+ * 3. setTempo() does NOT function in real-time AudioWorklet mode - FAIL (buffer overrun)
+ * 4. No setFormant() API exists - CONFIRMED ABSENT
  *
  * DECISION: Switch to native Rubber Band CLI binary via child_process in main process.
  * This solves all three limitations: formant control, proper tempo, no buffer overruns.
@@ -49,7 +49,7 @@ type ProcessorStatus =
   | 'loading'        // AudioWorklet loading (createRubberBandNode is async)
   | 'ready'          // WASM loaded, file decoded, ready to play
   | 'playing'        // Currently playing audio
-  | 'error'          // Something went wrong — see statusMessage
+  | 'error'          // Something went wrong - see statusMessage
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ export function SpikeTestUI(): React.ReactElement {
   const [statusMessage, setStatusMessage] = useState<string>('Load an audio file to test pitch shifting.')
   const [fileName, setFileName] = useState<string | null>(null)
 
-  // Slider display values — pitch commits on pointer release to avoid zipper noise.
+  // Slider display values - pitch commits on pointer release to avoid zipper noise.
   // Gain updates live (native AudioParam, no artifacts).
   const [pitch, setPitch] = useState<number>(1.0)
   const [gain, setGain] = useState<number>(1.0)
@@ -86,7 +86,7 @@ export function SpikeTestUI(): React.ReactElement {
 
   const stopAudio = useCallback((): void => {
     if (sourceNodeRef.current) {
-      // Null out onended BEFORE calling stop() — otherwise stop() fires the
+      // Null out onended BEFORE calling stop() - otherwise stop() fires the
       // onended callback asynchronously, which overwrites the 'playing' status
       // back to 'ready' when Restart is used (race condition).
       sourceNodeRef.current.onended = null
@@ -94,7 +94,7 @@ export function SpikeTestUI(): React.ReactElement {
         sourceNodeRef.current.stop()
         sourceNodeRef.current.disconnect()
       } catch {
-        // stop() throws if the source was never started or already ended — safe to ignore
+        // stop() throws if the source was never started or already ended - safe to ignore
       }
       sourceNodeRef.current = null
     }
@@ -123,7 +123,7 @@ export function SpikeTestUI(): React.ReactElement {
       processorRef.current = new RubberBandProcessor()
       await processorRef.current.initialize(audioCtxRef.current)
 
-      // GainNode for volume control — native AudioParam, smooth and artifact-free
+      // GainNode for volume control - native AudioParam, smooth and artifact-free
       gainNodeRef.current = audioCtxRef.current.createGain()
       gainNodeRef.current.gain.value = gain
 
@@ -168,7 +168,7 @@ export function SpikeTestUI(): React.ReactElement {
     rbNode.connect(gNode)
     gNode.connect(audioCtxRef.current.destination)
 
-    // Apply current pitch (tempo locked at 1.0 — it's broken in WASM mode)
+    // Apply current pitch (tempo locked at 1.0 - it's broken in WASM mode)
     processorRef.current.setPitch(pitch)
     processorRef.current.setTempo(1.0)
 
@@ -193,7 +193,7 @@ export function SpikeTestUI(): React.ReactElement {
     }
   }, [stopAudio, status])
 
-  // ─── Pitch — display updates live, processor commits on pointer release ──
+  // ─── Pitch - display updates live, processor commits on pointer release ──
 
   const handlePitchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
     setPitch(parseFloat(e.target.value))
@@ -204,7 +204,7 @@ export function SpikeTestUI(): React.ReactElement {
     processorRef.current?.setPitch(value)
   }, [])
 
-  // ─── Gain — updates live (native AudioParam, no artifacts) ───────────────
+  // ─── Gain - updates live (native AudioParam, no artifacts) ───────────────
 
   const handleGainChange = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
     const value = parseFloat(e.target.value)
@@ -240,10 +240,10 @@ export function SpikeTestUI(): React.ReactElement {
       {/* Header */}
       <div style={{ marginBottom: '2rem', borderBottom: '1px solid #30363d', paddingBottom: '1rem' }}>
         <h1 style={{ margin: 0, fontSize: '1.4rem', color: '#58a6ff' }}>
-          Sprint 1 — Rubber Band WASM Spike
+          Sprint 1 - Rubber Band WASM Spike
         </h1>
         <p style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#40c080' }}>
-          SPIKE COMPLETE — findings documented, architecture updated to three-stage pipeline
+          SPIKE COMPLETE - findings documented, architecture updated to three-stage pipeline
         </p>
       </div>
 
@@ -355,10 +355,10 @@ export function SpikeTestUI(): React.ReactElement {
         </button>
       </section>
 
-      {/* Pitch slider — the one thing that works in WASM mode */}
+      {/* Pitch slider - the one thing that works in WASM mode */}
       <section style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.4rem' }}>
-          <span style={{ color: '#8b949e' }}>PITCH (works — but with chipmunk effect, no formant control)</span>
+          <span style={{ color: '#8b949e' }}>PITCH (works - but with chipmunk effect, no formant control)</span>
           <span style={{ color: pitch === 1.0 ? '#8b949e' : '#f0c040', fontFamily: 'monospace' }}>
             {pitch.toFixed(2)}x
           </span>
@@ -406,7 +406,7 @@ export function SpikeTestUI(): React.ReactElement {
         </div>
       </section>
 
-      {/* Spike findings — completed results */}
+      {/* Spike findings - completed results */}
       <section style={{
         padding: '1rem',
         borderRadius: '6px',

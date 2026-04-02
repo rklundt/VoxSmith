@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * Logger — Renderer Side
+ * Logger - Renderer Side
  *
  * Lightweight logging utility for the renderer process.
  * Uses console methods since Winston runs in main process only.

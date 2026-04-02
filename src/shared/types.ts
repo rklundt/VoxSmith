@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,7 +33,7 @@
  * These are the effects with parallel dry routing in the effects chain.
  * Effects without wet/dry (HighPass, EQ, Compressor, RubberBand) are inline.
  */
-export type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'reverb'
+export type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'breathiness2' | 'reverb'
 
 /**
  * A single band in the 4-band EQ.
@@ -55,7 +55,7 @@ export interface EQBand {
  * - A/B comparison (swap between two snapshots)
  * - State recovery on crash (restore from engineStore)
  *
- * All values are plain numbers/booleans — no Web Audio nodes or references.
+ * All values are plain numbers/booleans - no Web Audio nodes or references.
  */
 export interface EngineSnapshot {
   pitch: number                          // -24 to +24 semitones
@@ -69,6 +69,7 @@ export interface EngineSnapshot {
   tremoloDepth: number                   // 0.0 to 1.0
   vocalFryIntensity: number              // 0.0 to 1.0
   breathiness: number                    // 0.0 to 1.0
+  breathiness2: number                   // 0.0 to 1.0 (vocal processing method)
   eq: EQBand[]                           // exactly 4 bands
   compressorThreshold: number            // dB (negative, e.g. -24)
   compressorRatio: number                // ratio (e.g. 4 means 4:1)
@@ -93,7 +94,7 @@ export interface EmotionVariant {
 
 /**
  * A saved character preset with all metadata.
- * Stored in presets.json — one preset per character voice.
+ * Stored in presets.json - one preset per character voice.
  */
 export interface Preset {
   id: string
@@ -101,7 +102,7 @@ export interface Preset {
   name: string
   /** Folder/category label (e.g. "Heroes", "Villains", "Creatures") */
   category: string
-  /** Relative path in userData/portraits/ — no base64 */
+  /** Relative path in userData/portraits/ - no base64 */
   portraitPath?: string
   /** Free text performance notes (e.g. "nervous energy, speaks quickly") */
   notes?: string
@@ -157,7 +158,7 @@ export interface AppSettings {
   ui: UISettings
 }
 
-// ─── Stage 1 — Offline Audio Processing Types ────────────────────────────
+// ─── Stage 1 - Offline Audio Processing Types ────────────────────────────
 
 /**
  * Request sent from renderer to main for Stage 1 offline processing.

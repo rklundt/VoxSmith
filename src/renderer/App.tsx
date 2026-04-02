@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,13 +17,17 @@
  */
 
 /**
- * VoxSmith — App Shell
+ * VoxSmith - App Shell
  *
- * Sprint 2: Mounts the ControlPanel with Stage 1 pipeline and Stage 2 effects.
- * The SpikeTestUI from Sprint 1 has been replaced.
+ * Sprint 4: Adds WaveformPanel above ControlPanel for visual feedback.
+ * WaveformPanel renders the audio waveform, level meter, and playhead.
+ * ControlPanel handles all parameter controls and playback buttons.
+ *
+ * Both panels share the same AudioEngine instance via useAudioEngine().
+ * The hook is called here in App so that both children access the same
+ * engine. Props are passed down rather than calling the hook in each child.
  *
  * Future sprints will add:
- * - Sprint 4: WaveformPanel
  * - Sprint 5: PresetPanel
  * - Sprint 7: Recording controls
  * - Sprint 8: Settings panel
@@ -31,8 +35,15 @@
 
 import React, { useEffect } from 'react'
 import { ControlPanel } from './components/panels/ControlPanel'
+import { WaveformPanel } from './components/panels/WaveformPanel'
+import { useAudioEngine } from './hooks/useAudioEngine'
 
 function App(): React.ReactElement {
+  // Single AudioEngine instance shared by all panels.
+  // useAudioEngine returns the module-level singleton and provides
+  // stable callbacks for interacting with it.
+  const audioEngine = useAudioEngine()
+
   // Verify IPC bridge is still working (runs silently in the background)
   useEffect(() => {
     window.voxsmith.getSettings()
@@ -40,7 +51,22 @@ function App(): React.ReactElement {
       .catch((err: unknown) => console.error('[App] IPC bridge error:', err))
   }, [])
 
-  return <ControlPanel />
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* Waveform display and level meter - fixed at top */}
+      <WaveformPanel
+        getCurrentTime={audioEngine.getCurrentTime}
+        getDuration={audioEngine.getDuration}
+        getOutputLevel={audioEngine.getOutputLevel}
+        seek={audioEngine.seek}
+        getEngine={audioEngine.getEngine}
+      />
+      {/* All parameter controls and playback buttons */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <ControlPanel />
+      </div>
+    </div>
+  )
 }
 
 export default App

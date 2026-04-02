@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * VoxSmith — Preload API Type Declarations
+ * VoxSmith - Preload API Type Declarations
  *
  * Provides full TypeScript support for window.voxsmith in the renderer process.
  * This file is included in tsconfig.web.json so the renderer gets autocomplete
@@ -49,7 +49,7 @@ export interface VoxsmithAPI {
   savePreset(preset: Preset): Promise<void>
   deletePreset(id: string): Promise<void>
 
-  // Stage 1 — Offline Audio Processing (Rubber Band CLI)
+  // Stage 1 - Offline Audio Processing (Rubber Band CLI)
   processAudio(request: AudioProcessRequest): Promise<AudioProcessResult>
   cancelProcessing(): Promise<void>
 

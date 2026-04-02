@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * RubberBandProcessor — Renderer Engine Layer
+ * RubberBandProcessor - Renderer Engine Layer
  *
  * Sprint 1 Spike: Wraps the rubberband-web AudioWorkletNode to provide
  * pitch shifting and tempo control via Rubber Band Library (WASM).
@@ -34,14 +34,14 @@
  *
  * FORMANT INVESTIGATION RESULT (Sprint 1):
  * The rubberband-web package exposes ONLY these methods on RubberBandNode:
- *   - setPitch(pitch: number)    — multiplier, 1.0 = no change, 2.0 = octave up
- *   - setTempo(tempo: number)    — multiplier, 1.0 = no change, 0.5 = half speed
- *   - setHighQuality(on: boolean) — toggles higher-latency quality mode
- *   - close()                    — tears down the worklet
+ *   - setPitch(pitch: number)    - multiplier, 1.0 = no change, 2.0 = octave up
+ *   - setTempo(tempo: number)    - multiplier, 1.0 = no change, 0.5 = half speed
+ *   - setHighQuality(on: boolean) - toggles higher-latency quality mode
+ *   - close()                    - tears down the worklet
  *
  * There is NO setFormant() method in the public API or in the WASM processor
  * internals (confirmed by searching rubberband-processor.js source for
- * "formant" — zero matches). The underlying Rubber Band C++ library DOES
+ * "formant" - zero matches). The underlying Rubber Band C++ library DOES
  * support independent formant scaling, but rubberband-web does not expose it.
  *
  * This means pitch shifting via rubberband-web will exhibit the "chipmunk effect":
@@ -79,7 +79,7 @@ export class RubberBandProcessor {
    * It registers the AudioWorklet processor script and creates the node.
    * This is async because AudioWorklet.addModule() fetches and compiles the script.
    *
-   * @param audioCtx — The AudioContext for the current session.
+   * @param audioCtx - The AudioContext for the current session.
    *                   Must be in 'running' state (user gesture required in browsers,
    *                   but Electron allows autoplay via webPreferences.autoplayPolicy).
    */
@@ -88,7 +88,7 @@ export class RubberBandProcessor {
       return
     }
 
-    // createRubberBandNode handles addModule() internally — it registers the
+    // createRubberBandNode handles addModule() internally - it registers the
     // processor at WORKLET_PROCESSOR_PATH and returns a configured AudioWorkletNode.
     this.node = await createRubberBandNode(audioCtx, WORKLET_PROCESSOR_PATH)
     this.initialized = true
@@ -104,7 +104,7 @@ export class RubberBandProcessor {
    */
   getNode(): RubberBandNode {
     if (!this.node) {
-      throw new Error('RubberBandProcessor not initialized — call initialize() first')
+      throw new Error('RubberBandProcessor not initialized - call initialize() first')
     }
     return this.node
   }
@@ -122,7 +122,7 @@ export class RubberBandProcessor {
    * chipmunks; lowering pitch makes them sound artificially hollow.
    * This is the key limitation being evaluated in Sprint 1.
    *
-   * @param pitch — Ratio multiplier (recommended range: 0.5 to 2.0)
+   * @param pitch - Ratio multiplier (recommended range: 0.5 to 2.0)
    */
   setPitch(pitch: number): void {
     this.node?.setPitch(pitch)
@@ -132,14 +132,14 @@ export class RubberBandProcessor {
    * Sets the playback tempo (time-stretch) ratio.
    *
    * What it sounds like:
-   *   < 1.0 = slower playback (0.5 = half speed, same pitch — stretched)
+   *   < 1.0 = slower playback (0.5 = half speed, same pitch - stretched)
    *   1.0   = no change
-   *   > 1.0 = faster playback (2.0 = double speed, same pitch — compressed)
+   *   > 1.0 = faster playback (2.0 = double speed, same pitch - compressed)
    *
    * Unlike simple sample-rate changes, Rubber Band uses a phase vocoder
-   * to change speed WITHOUT changing pitch — the two are independent.
+   * to change speed WITHOUT changing pitch - the two are independent.
    *
-   * @param tempo — Ratio multiplier (recommended range: 0.5 to 2.0)
+   * @param tempo - Ratio multiplier (recommended range: 0.5 to 2.0)
    */
   setTempo(tempo: number): void {
     this.node?.setTempo(tempo)
@@ -155,7 +155,7 @@ export class RubberBandProcessor {
    * For live mic monitoring, keep this false (lower latency).
    * For file processing before export, set this true.
    *
-   * @param enabled — true = high quality (higher latency), false = real-time mode
+   * @param enabled - true = high quality (higher latency), false = real-time mode
    */
   setHighQuality(enabled: boolean): void {
     this.node?.setHighQuality(enabled)

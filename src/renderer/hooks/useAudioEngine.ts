@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 /**
- * useAudioEngine — Hook for AudioEngine Lifecycle
+ * useAudioEngine - Hook for AudioEngine Lifecycle
  *
  * Creates and manages the singleton AudioEngine instance.
  * Provides methods for file loading, playback, and real-time parameter updates.
@@ -33,29 +33,34 @@
  *   const { loadFile, play, stop, setVolume } = useAudioEngine()
  */
 
-import { useRef, useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { AudioEngine } from '../engine/AudioEngine'
 import { useEngineStore } from '../stores/engineStore'
+import type { EffectName } from '../../shared/types'
+
+// Module-level singleton - ensures all components that call useAudioEngine()
+// share the SAME AudioEngine instance. Previously each useRef created a separate
+// engine per component, which meant the waveform/level meter and the controls
+// would operate on different AudioContexts.
+let singletonEngine: AudioEngine | null = null
 
 export function useAudioEngine() {
-  // The engine lives for the entire app session — useRef ensures it's created once.
-  // We don't use useState because we don't want React re-renders when engine
-  // internals change. The Zustand store handles UI state separately.
-  const engineRef = useRef<AudioEngine | null>(null)
-
-  // Lazy-initialize the engine on first access
+  // Lazy-initialize the singleton on first access from any component.
+  // All subsequent calls return the same instance.
   const getEngine = useCallback((): AudioEngine => {
-    if (!engineRef.current) {
-      engineRef.current = new AudioEngine()
+    if (!singletonEngine) {
+      singletonEngine = new AudioEngine()
     }
-    return engineRef.current
+    return singletonEngine
   }, [])
 
-  // Clean up the engine when the component (App) unmounts
+  // Clean up the engine when the top-level App unmounts.
+  // Because the singleton is shared, only the first unmount disposes it.
+  // This is fine because App is the outermost consumer and always unmounts last.
   useEffect(() => {
     return () => {
-      engineRef.current?.dispose()
-      engineRef.current = null
+      singletonEngine?.dispose()
+      singletonEngine = null
     }
   }, [])
 
@@ -106,6 +111,47 @@ export function useAudioEngine() {
     useEngineStore.getState().setIsPlaying(false)
   }, [getEngine])
 
+  // ─── Seek (Sprint 4) ─────────────────────────────────────────────────
+
+  /**
+   * Seeks to a specific position in the audio buffer (in seconds).
+   * During playback, this restarts from the new position seamlessly.
+   * When paused/idle, it sets the start point for the next play().
+   */
+  const seek = useCallback((seconds: number) => {
+    const engine = getEngine()
+    const wasPlaying = engine.status === 'playing'
+    engine.seek(seconds, wasPlaying ? () => {
+      useEngineStore.getState().setIsPlaying(false)
+    } : undefined)
+  }, [getEngine])
+
+  // ─── Level Metering (Sprint 4) ────────────────────────────────────────
+
+  /**
+   * Returns the current output peak level (0.0 to 1.0+).
+   * Values above 1.0 indicate clipping.
+   * Called on every animation frame by the level meter component.
+   */
+  const getOutputLevel = useCallback((): number => {
+    return getEngine().getOutputLevel()
+  }, [getEngine])
+
+  /**
+   * Returns the current playback position in seconds.
+   * Used by the waveform playhead to track progress.
+   */
+  const getCurrentTime = useCallback((): number => {
+    return getEngine().currentTime
+  }, [getEngine])
+
+  /**
+   * Returns the duration of the active audio buffer in seconds.
+   */
+  const getDuration = useCallback((): number => {
+    return getEngine().duration
+  }, [getEngine])
+
   // ─── Volume ───────────────────────────────────────────────────────────
 
   const setVolume = useCallback((value: number) => {
@@ -131,6 +177,89 @@ export function useAudioEngine() {
     getEngine().setCompressorRatio(ratio)
   }, [getEngine])
 
+  const setOutputGain = useCallback((gain: number) => {
+    getEngine().setOutputGain(gain)
+  }, [getEngine])
+
+  // ── Tone.js Effects ──────────────────────────────────────────────────
+
+  /**
+   * Updates vibrato in real time and syncs to the store.
+   * Rate = LFO speed (Hz), Depth = 0-1 (intensity).
+   */
+  const setVibrato = useCallback((rate: number, depth: number) => {
+    getEngine().setVibrato(rate, depth)
+  }, [getEngine])
+
+  /**
+   * Updates tremolo in real time and syncs to the store.
+   * Rate = LFO speed (Hz), Depth = 0-1 (intensity).
+   */
+  const setTremolo = useCallback((rate: number, depth: number) => {
+    getEngine().setTremolo(rate, depth)
+  }, [getEngine])
+
+  /**
+   * Updates reverb in real time.
+   * roomSize = 0-1, amount = 0-1 (mix level).
+   */
+  const setReverb = useCallback((roomSize: number, amount: number) => {
+    getEngine().setReverb(roomSize, amount)
+  }, [getEngine])
+
+  // ── Custom Effects ───────────────────────────────────────────────────
+
+  /**
+   * Updates vocal fry intensity (0-1) in real time.
+   * Controls sub-audio AM modulation depth.
+   */
+  const setVocalFry = useCallback((intensity: number) => {
+    getEngine().setVocalFry(intensity)
+  }, [getEngine])
+
+  /**
+   * Updates breathiness amount (0-1) in real time.
+   * Spectral reshaping - thins body, adds air.
+   */
+  const setBreathiness = useCallback((amount: number) => {
+    getEngine().setBreathiness(amount)
+  }, [getEngine])
+
+  /**
+   * Updates breathiness 2 amount (0-1) in real time.
+   * Vocal processing method - layers a processed air track on top of the voice.
+   */
+  const setBreathiness2 = useCallback((amount: number) => {
+    getEngine().setBreathiness2(amount)
+  }, [getEngine])
+
+  // ── Wet/Dry Mix ──────────────────────────────────────────────────────
+
+  /**
+   * Sets the wet/dry mix for a specific effect (0-1).
+   */
+  const setWetDry = useCallback((effect: EffectName, mix: number) => {
+    getEngine().setWetDry(effect, mix)
+  }, [getEngine])
+
+  // ── Bypass ───────────────────────────────────────────────────────────
+
+  /**
+   * Enables/disables bypass mode (signal skips entire effects chain).
+   */
+  const setBypass = useCallback((bypassed: boolean) => {
+    getEngine().setBypass(bypassed)
+  }, [getEngine])
+
+  // ── Loop ────────────────────────────────────────────────────────────
+
+  /**
+   * Enables/disables loop mode (audio restarts seamlessly at end).
+   */
+  const setLoop = useCallback((loop: boolean) => {
+    getEngine().setLoop(loop)
+  }, [getEngine])
+
   // ─── Snapshot ─────────────────────────────────────────────────────────
 
   /**
@@ -149,11 +278,25 @@ export function useAudioEngine() {
     play,
     pause,
     stop,
+    seek,
+    getOutputLevel,
+    getCurrentTime,
+    getDuration,
     setVolume,
     setEQBand,
     setHighPassFrequency,
     setCompressorThreshold,
     setCompressorRatio,
+    setOutputGain,
+    setVibrato,
+    setTremolo,
+    setReverb,
+    setVocalFry,
+    setBreathiness,
+    setBreathiness2,
+    setWetDry,
+    setBypass,
+    setLoop,
     applySnapshot,
   }
 }

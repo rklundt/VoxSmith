@@ -1,5 +1,5 @@
 /**
- * VoxSmith — Voice Processing for Indie Game Developers
+ * VoxSmith - Voice Processing for Indie Game Developers
  * Copyright (C) 2025 Ray Klundt w/ Claude Code Assist
  *
  * This program is free software: you can redistribute it and/or modify
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
     if (fs.existsSync(exePath)) {
       console.log(`  ✓ rubberband.exe extracted to ${DEST_DIR}`)
     } else {
-      // The exe might have a different name in the ZIP — list what we got
+      // The exe might have a different name in the ZIP - list what we got
       const extracted = fs.readdirSync(DEST_DIR)
       console.log(`  ⚠ rubberband.exe not found after extraction. Files found: ${extracted.join(', ')}`)
       console.log(`  You may need to rename the binary to rubberband.exe`)
