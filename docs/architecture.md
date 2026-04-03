@@ -25,7 +25,7 @@ VoxSmith is an Electron application with two processes that have strictly define
 └─────────────────────────────────────────────┘
 ```
 
-**Rule:** Real-time audio effects never move to main. File I/O never moves to renderer. Offline audio processing (Rubber Band CLI for pitch/formant/tempo) runs in main via `child_process` and returns processed buffers to the renderer via IPC.
+**Rule:** Real-time audio effects never move to main. File I/O never moves to renderer. Offline audio processing (Rubber Band for pitch/formant/tempo) runs in main — formant shifting uses the Rubber Band library API via Koffi FFI (`setFormantScale()`), pitch/tempo-only uses the CLI binary. Both return processed buffers to the renderer via IPC.
 
 ---
 
@@ -53,7 +53,7 @@ VoxSmith's audio processing is split into three stages based on what can run in 
 
 ### Why Three Stages?
 
-**Stage 1 (Offline):** Pitch shifting with independent formant control requires the Rubber Band CLI (native binary), not the WASM AudioWorklet. Sprint 1 proved that `rubberband-web` has no formant API and its real-time mode has buffer management issues in AudioWorklet context. The native binary provides full formant control, proper tempo/time-stretch, and processes entire files without buffer overruns.
+**Stage 1 (Offline):** Pitch shifting and formant control use the Rubber Band library, not the WASM AudioWorklet. Sprint 1 proved that `rubberband-web` has no formant API and its real-time mode has buffer management issues. Sprint 6 integrated the Rubber Band C library API via Koffi FFI, providing true single-pass formant shifting via `setFormantScale()`. Pitch/tempo-only processing uses the CLI binary. Both approaches process entire files offline without buffer overruns.
 
 **Stage 2 (Real-time):** All other effects use the Web Audio API and Tone.js. These process audio in real-time with no perceptible latency. Slider changes are instant. This is where the user spends most of their time fine-tuning character voices.
 

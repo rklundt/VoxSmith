@@ -61,7 +61,7 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
       'Negative values sound bigger and deeper; positive values sound smaller and lighter. ' +
       'This is the feature that makes your voice sound like a genuinely different person rather than a processed version of yourself.',
     pairsWith: ['Pitch', '4-Band EQ'],
-    poweredBy: 'Rubber Band Library (native CLI, offline processing)',
+    poweredBy: 'Rubber Band Library API via Koffi FFI (setFormantScale, offline processing)',
   },
 
   reverb: {

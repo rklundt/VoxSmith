@@ -19,11 +19,8 @@
 /**
  * VoxSmith - App Shell
  *
- * Sprint 5: Adds PresetPanel sidebar (hidden by default) and a hamburger
- * menu in the top bar for toggling panels. The menu gives us a single place
- * to add more view toggles in future sprints (Settings panel, etc.).
- *
- * Layout: TopBar + (optional PresetPanel sidebar) + main area (Waveform + Controls).
+ * Sprint 6: Adds ExportPanel sidebar for audio export controls.
+ * Layout: TopBar + (optional PresetPanel) + main area + (optional ExportPanel).
  *
  * All panels share the same AudioEngine instance via useAudioEngine().
  * The hook is called here in App so that both children access the same
@@ -38,8 +35,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { ControlPanel } from './components/panels/ControlPanel'
 import { WaveformPanel } from './components/panels/WaveformPanel'
 import { PresetPanel } from './components/panels/PresetPanel'
+import { ExportPanel } from './components/panels/ExportPanel'
 import { useAudioEngine } from './hooks/useAudioEngine'
 import { usePresets } from './hooks/usePresets'
+import { useExport } from './hooks/useExport'
+import { useEngineStore } from './stores/engineStore'
 
 function App(): React.ReactElement {
   // Single AudioEngine instance shared by all panels.
@@ -51,10 +51,17 @@ function App(): React.ReactElement {
   // Receives applySnapshot so presets can update the audio engine.
   const presetsHook = usePresets(audioEngine.applySnapshot)
 
+  // Export hook - handles WAV encoding and FFmpeg IPC pipeline.
+  const exportHook = useExport(audioEngine.getEngine)
+
+  // Track whether audio is loaded so we can disable export when empty
+  const hasFile = useEngineStore((s) => s.hasFile)
+
   // ─── Panel Visibility ──────────────────────────────────────────────────
-  // PresetPanel starts hidden so the main controls have full width on launch.
-  // The hamburger menu toggles it. Future sprints add more panels here.
+  // Both sidebars start hidden so the main controls have full width on launch.
+  // The hamburger menu toggles them.
   const [showPresets, setShowPresets] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -73,6 +80,11 @@ function App(): React.ReactElement {
 
   const togglePresets = useCallback(() => {
     setShowPresets((prev) => !prev)
+    setMenuOpen(false)
+  }, [])
+
+  const toggleExport = useCallback(() => {
+    setShowExport((prev) => !prev)
     setMenuOpen(false)
   }, [])
 
@@ -152,6 +164,24 @@ function App(): React.ReactElement {
               >
                 {showPresets ? 'Hide Presets' : 'Show Presets'}
               </button>
+              <button
+                onClick={toggleExport}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: '#ccc',
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                {showExport ? 'Hide Export' : 'Show Export'}
+              </button>
               {/* Future menu items (Sprint 8: Settings, etc.) go here */}
             </div>
           )}
@@ -192,6 +222,21 @@ function App(): React.ReactElement {
             <ControlPanel />
           </div>
         </div>
+
+        {/* Right sidebar: export controls (hidden by default) */}
+        {showExport && (
+          <ExportPanel
+            settings={exportHook.settings}
+            updateSetting={exportHook.updateSetting}
+            status={exportHook.status}
+            error={exportHook.error}
+            lastExportPath={exportHook.lastExportPath}
+            onExport={exportHook.exportAudio}
+            onResetStatus={exportHook.resetStatus}
+            hasAudio={hasFile}
+            onClose={toggleExport}
+          />
+        )}
       </div>
     </div>
   )

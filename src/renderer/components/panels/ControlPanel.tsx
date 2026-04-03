@@ -39,6 +39,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useEngineStore, computeIsStale } from '../../stores/engineStore'
 import { DEFAULT_ENGINE_SNAPSHOT } from '../../../shared/constants'
 import { TOOLTIPS } from '../../../shared/tooltips'
+import { HelpTooltip } from '../controls/HelpTooltip'
 import { useAudioEngine } from '../../hooks/useAudioEngine'
 import { useStage1Processing } from '../../hooks/useStage1Processing'
 import type { EffectName, EQBand } from '../../../shared/types'
@@ -560,20 +561,16 @@ export function ControlPanel(): React.ReactElement {
           onChange={handlePitchChange}
         />
 
-        {/* Formant slider: DISABLED - two-pass CLI artifacts.
-            Re-enabled when native Rubber Band addon provides setFormantScale(). */}
+        {/* Formant slider: Uses Rubber Band library API (Koffi FFI) for true
+            single-pass formant shifting via setFormantScale(). Re-enabled in Sprint 6. */}
         <SliderControl
           label="Formant"
           value={snapshot.formant}
           min={-1} max={1} step={0.01}
           unit="oct" tooltipKey="formant"
-          disabled={true}
+          disabled={isProcessing}
           onChange={handleFormantChange}
         />
-        <div style={{ fontSize: '11px', color: '#666', marginTop: '-4px', marginBottom: '8px', marginLeft: '122px' }}>
-          Disabled - requires native Rubber Band library integration (future sprint)
-        </div>
-
         <SliderControl
           label="Speed"
           value={snapshot.speed}
@@ -830,87 +827,7 @@ export function ControlPanel(): React.ReactElement {
 
 // ─── Sub-Components ─────────────────────────────────────────────────────────
 
-// ─── Tooltip Component ──────────────────────────────────────────────────────
-// Custom tooltip with ~200ms show delay (half of browser default ~400ms),
-// max-width constraint to prevent bleeding into other panels, and word wrap.
-
-interface HelpTooltipProps {
-  /** The full detail text to show */
-  detail: string
-  /** "Works well with" pairings */
-  pairsWith: string[]
-}
-
-/**
- * A small "?" circle that shows a positioned tooltip on hover.
- * Uses React state instead of native title for faster delay and controlled width.
- */
-function HelpTooltip({ detail, pairsWith }: HelpTooltipProps): React.ReactElement {
-  const [visible, setVisible] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const handleMouseEnter = () => {
-    // ~200ms delay - half the default browser title delay (~400ms)
-    timerRef.current = setTimeout(() => setVisible(true), 200)
-  }
-
-  const handleMouseLeave = () => {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    setVisible(false)
-  }
-
-  return (
-    <span
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}
-    >
-      {/* The "?" circle */}
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '14px',
-        height: '14px',
-        borderRadius: '50%',
-        border: '1px solid #555',
-        fontSize: '9px',
-        color: '#777',
-        cursor: 'help',
-      }}>
-        ?
-      </span>
-
-      {/* Tooltip popup */}
-      {visible && (
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          left: '0px',
-          backgroundColor: '#1e2a3a',
-          border: '1px solid #3a4a5a',
-          borderRadius: '6px',
-          padding: '10px 12px',
-          fontSize: '12px',
-          lineHeight: '1.5',
-          color: '#d0d0d0',
-          width: '280px',
-          maxWidth: 'calc(100vw - 80px)',
-          whiteSpace: 'normal',
-          wordWrap: 'break-word',
-          zIndex: 1000,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          pointerEvents: 'none',
-        }}>
-          <div style={{ marginBottom: '6px' }}>{detail}</div>
-          <div style={{ fontSize: '11px', color: '#8a9aaa' }}>
-            Works well with: {pairsWith.join(', ')}
-          </div>
-        </div>
-      )}
-    </span>
-  )
-}
+// HelpTooltip is now imported from ../controls/HelpTooltip.tsx (shared component)
 
 // ─── Slider Component ───────────────────────────────────────────────────────
 

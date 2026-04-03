@@ -81,7 +81,9 @@ Always read the following docs before starting any sprint or significant feature
 | UI framework | React + TypeScript |
 | Bundler | electron-vite |
 | Audio effects | Web Audio API + Tone.js (renderer process only) |
-| Formant shifting | Rubber Band Library (native CLI binary via main process) |
+| Formant shifting | Rubber Band Library (shared DLL via Koffi FFI in main process) |
+| Pitch/tempo | Rubber Band CLI (native binary via main process) |
+| FFI | Koffi (calling Rubber Band DLL from Node.js) |
 | Waveform display | WaveSurfer.js |
 | File processing/export | FFmpeg (bundled binary, called from main process) |
 | State management | Zustand |
@@ -90,9 +92,9 @@ Always read the following docs before starting any sprint or significant feature
 
 **Real-time audio effects (EQ, reverb, compression, etc.) run in the renderer process via Web Audio API.** Never move real-time effects to the main process.
 
-**Offline audio processing (pitch/formant/tempo via Rubber Band CLI), FFmpeg, and file I/O run exclusively in the main process.** Never call Rubber Band CLI, FFmpeg, or write files directly from the renderer — always use IPC.
+**Offline audio processing (pitch/formant/tempo via Rubber Band), FFmpeg, and file I/O run exclusively in the main process.** Formant shifting uses the Rubber Band library API via Koffi FFI (`setFormantScale()`). Pitch/tempo-only uses the CLI binary. Never call Rubber Band, FFmpeg, or write files directly from the renderer — always use IPC.
 
-**Three-stage pipeline:** Stage 1 (offline: Rubber Band CLI in main) → Stage 2 (real-time: Web Audio in renderer) → Stage 3 (export: FFmpeg in main). See `docs/architecture.md` for full details.
+**Three-stage pipeline:** Stage 1 (offline: Rubber Band library/CLI in main) → Stage 2 (real-time: Web Audio in renderer) → Stage 3 (export: FFmpeg in main). See `docs/architecture.md` for full details.
 
 ---
 
@@ -366,8 +368,8 @@ VoxSmith uses sprint-based semantic versioning:
 | Desktop framework | Electron | Single codebase, WASM/Web Audio API ecosystem, familiar TS stack |
 | Audio processing location | Renderer process | Web Audio API, Tone.js, WaveSurfer.js, Rubber Band WASM all require browser context |
 | Formant shifting | Rubber Band CLI (native binary) | rubberband-web WASM lacks formant API, broken real-time tempo, buffer overruns — native CLI solves all three |
-| Formant shift disabled (Sprint 2) | Deferred to Sprint 3 | CLI `--formant` flag only preserves formants (boolean), cannot shift them. Two-pass CLI workaround (shift + shift-back with --formant) produces robotic artifacts. Sprint 3 will integrate Rubber Band C++ library API via native addon for single-pass `setFormantScale()` |
-| Formant fallback | SoundTouch WASM | No longer planned — native Rubber Band CLI provides full formant control |
+| Formant shift disabled (Sprint 2) | Deferred to Sprint 6 | CLI `--formant` flag only preserves formants (boolean), cannot shift them. Two-pass CLI workaround (shift + shift-back with --formant) produces robotic artifacts. Sprint 6 integrates Rubber Band shared library via `Koffi` for single-pass `setFormantScale()` — no C++ build toolchain required, `.dll` bundled like FFmpeg |
+| Formant fallback | SoundTouch WASM | No longer planned — Rubber Band library API via `Koffi` provides full formant control |
 | Processing pipeline | Three-stage (offline → real-time → export) | Pitch/formant/tempo offline via Rubber Band CLI; EQ/reverb/etc real-time via Web Audio; export via FFmpeg |
 | File export pipeline | FFmpeg (bundled) | Handles noise gate, normalization, bit depth, silence padding reliably |
 | Preset storage | Single presets.json | Simple, sufficient for expected data volume, easy to back up |
