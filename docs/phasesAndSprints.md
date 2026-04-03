@@ -133,7 +133,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can import a WAV file by drag-and-drop or file browser so that I have audio to work with
 - As a user, I can play back my imported audio through the real-time effects chain so that I can hear the processed result
 - As a user, I can control pitch (semitones) and click Apply so that my voice sounds higher or lower after offline processing
-- ~~As a user, I can control formant shift independently of pitch and click Apply so that my voice sounds like a different body size~~ **DEFERRED** — Rubber Band CLI lacks native formant scale control; two-pass CLI workaround produces unacceptable artifacts. Slider disabled in UI. Re-enabled when Rubber Band C++ library API is integrated via Node.js native addon (see Sprint 3).
+- ~~As a user, I can control formant shift independently of pitch and click Apply so that my voice sounds like a different body size~~ **DEFERRED** — Rubber Band CLI lacks native formant scale control; two-pass CLI workaround produces unacceptable artifacts. Slider disabled in UI. Re-enabled in Sprint 6 via `Koffi` wrapping the Rubber Band shared library (`.dll`).
 - As a user, I can control playback speed/tempo and click Apply so that my character speaks at a different rate
 - As a user, I see a progress indicator while Stage 1 processing is running so that I know the app is working
 - As a user, I see a "preview outdated" indicator when pitch/formant/tempo sliders have changed but not yet been applied
@@ -148,7 +148,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 **Acceptance Criteria:**
 - WAV file loads and plays back
 - Pitch and formant controls work via Stage 1 IPC — Apply button triggers offline processing
-- ~~Formant shift is audibly independent of pitch~~ **DEFERRED** — requires Rubber Band native library integration (Sprint 3)
+- ~~Formant shift is audibly independent of pitch~~ **DEFERRED** — requires Rubber Band native library integration (delivered in Sprint 6 via `Koffi`)
 - Tempo/speed changes via Stage 1 without affecting pitch
 - Progress indicator visible during Stage 1 processing
 - Stale preview indicator visible when offline params changed but not applied
@@ -164,7 +164,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Import WAV via drag-and-drop — file loads and plays
 - [ ] Import WAV via file browser dialog — file loads and plays
 - [ ] Pitch: set to +12 semitones, click Apply — audible pitch change after processing completes
-- [ ] ~~Formant: shift independently of pitch, click Apply — audible character change, NOT chipmunk~~ **DEFERRED to Sprint 3** — formant slider disabled with explanation text in UI
+- [ ] ~~Formant: shift independently of pitch, click Apply — audible character change, NOT chipmunk~~ **DEFERRED to Sprint 6** — formant slider disabled with explanation text in UI; re-enabled via `Koffi` Rubber Band library integration
 - [ ] Speed/Tempo: set to 0.7, click Apply — slower playback without pitch change
 - [ ] Progress indicator: visible during Stage 1 processing, disappears on completion
 - [ ] Stale indicator: change pitch slider without clicking Apply — "preview outdated" visible
@@ -206,7 +206,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can adjust compression threshold and ratio so that my voice has consistent dynamic control
 - As a user, I can set a high-pass filter cutoff so that low-end rumble is removed
 - As a user, I can set a wet/dry mix per effect so that I can blend processed and dry signal per effect
-- As a user, I can control formant shift independently of pitch via the Rubber Band C++ library API (`setFormantScale()`) so that my voice sounds like a different body size without robotic artifacts — **RE-ENABLEMENT from Sprint 2** (requires Node.js native addon or `node-ffi-napi` wrapping the Rubber Band shared library; single-pass processing, no two-pass CLI workaround)
+- ~~As a user, I can control formant shift independently of pitch via the Rubber Band C++ library API (`setFormantScale()`) so that my voice sounds like a different body size without robotic artifacts~~ **MOVED to Sprint 6** — delivered via `Koffi` wrapping the Rubber Band shared library (`.dll`)
 - As a user, I can toggle between Basic and Advanced mode so that the interface is not overwhelming by default
 - As a user, Basic mode shows pitch, formant, reverb, and speed so that I can get results quickly
 - As a user, Advanced mode reveals all remaining controls so that I have full control when needed
@@ -230,7 +230,7 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Compressor: adjust threshold and ratio — audible dynamic control
 - [ ] High-pass filter: sweep cutoff — audible low-end removal
 - [ ] Wet/dry mix: adjust per effect — blend between processed and dry
-- [ ] Formant (re-enabled): shift independently of pitch via native Rubber Band API — audible character change, NOT chipmunk, no robotic artifacts
+- [ ] ~~Formant (re-enabled): shift independently of pitch via native Rubber Band API — audible character change, NOT chipmunk, no robotic artifacts~~ **MOVED to Sprint 6**
 - [ ] Basic mode: only pitch, formant, reverb, speed visible
 - [ ] Advanced mode: all controls visible
 - [ ] Toggle mode, restart app — mode persists
@@ -351,6 +351,8 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - As a user, I can add silence padding in milliseconds to the start and end of exported files so that game engine audio triggers do not clip
 - As a user, export controls (bit depth, sample rate, normalize, noise gate, silence padding) have tooltips from `tooltips.ts` so that I understand what each setting does
 - As a developer, the full FFmpeg command executed for each export is logged at debug level so that export issues can be diagnosed
+- As a user, I can control formant shift independently of pitch so that my voice sounds like a different body size without robotic artifacts — **RE-ENABLEMENT from Sprint 2** (uses `Koffi` to call Rubber Band shared library `.dll` with `setFormantScale()` for single-pass processing; no native addon build toolchain required, `.dll` bundled like FFmpeg)
+- As a developer, the Rubber Band `.dll` is bundled via the existing `scripts/copy-binaries.ts` and `extraResources` pattern so that no C++ build tools are needed to develop locally
 
 **Acceptance Criteria:**
 - Export produces a valid WAV file at the specified bit depth and sample rate
@@ -358,6 +360,10 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - Noise gate audibly removes background noise from test recordings
 - Silence padding is accurate to within 5ms
 - Export failure is caught, logged at error level, and shown to user
+- Formant slider re-enabled in UI with full range control (semitones)
+- Formant shifting uses single-pass Rubber Band library API via `Koffi` — no two-pass CLI workaround, no robotic artifacts
+- Rubber Band `.dll` bundled in `src/assets/rubberband/` and copied via `scripts/copy-binaries.ts`
+- `pnpm install` on a fresh clone resolves all dependencies including the `.dll` — no C++ build tools required
 
 **QA Checklist:**
 - [ ] Export at 16-bit / 44100Hz — valid WAV, correct properties
@@ -372,6 +378,14 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - [ ] Negative: export to a read-only directory — error shown to user, logged, no crash
 - [ ] Negative: export with no audio loaded — prevented with clear message
 - [ ] Negative: cancel/close save dialog during export — handled gracefully, no orphaned temp files
+- [ ] Formant: shift independently of pitch, click Apply — audible character change, NOT chipmunk, no robotic artifacts
+- [ ] Formant: set to +4 semitones — voice sounds smaller/thinner (child/fairy)
+- [ ] Formant: set to -4 semitones — voice sounds larger/deeper (ogre/giant)
+- [ ] Formant + Pitch combined: shift pitch up +6, formant down -3 — pitch changes but body size stays large
+- [ ] Formant slider tooltip present and sourced from `tooltips.ts`
+- [ ] Rubber Band `.dll` present in `src/assets/rubberband/` after `pnpm install`
+- [ ] Fresh clone: `pnpm install && pnpm dev` — formant works without C++ build tools
+- [ ] Negative: delete `.dll`, launch app — graceful error logged, formant disabled with message, other features still work
 
 **Definition of Done:**
 - All acceptance criteria met

@@ -9,7 +9,6 @@ release/
 
 # Bundled binaries (fetched via postinstall, not committed)
 src/assets/ffmpeg/
-src/assets/rubberband/
 src/assets/rubberband-wasm/
 
 # Logs
@@ -35,6 +34,17 @@ portraits/*
 *.dmg
 *.AppImage
 *.snap
+
+# Rubber Band assets: all binaries and support files are committed to git.
+# Users cannot compile these locally — they must ship with the repo.
+# These ! rules MUST come after *.exe above to override the global ignore.
+!src/assets/rubberband/rubberband.exe
+!src/assets/rubberband/rubberband-r3.exe
+!src/assets/rubberband/rubberband-3.dll
+!src/assets/rubberband/sndfile.dll
+!src/assets/rubberband/CHANGELOG.txt
+!src/assets/rubberband/COPYING.txt
+!src/assets/rubberband/README.txt
 
 # OS files
 .DS_Store

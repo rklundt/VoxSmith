@@ -31,16 +31,23 @@
 - **Note:** Tone.js wraps Web Audio API - it works within the same AudioContext. Connect Tone nodes inline in the effects chain.
 - **Install:** `pnpm add tone`
 
-### Rubber Band Library (Native CLI Binary)
+### Rubber Band Library (CLI Binary + Shared Library DLL)
 - **Why:** Professional-grade independent pitch and formant shifting. Used in commercial audio software.
-- **Distribution:** Bundled CLI binary inside the app. Zero user dependencies.
-- **Sprint 1 finding:** The `rubberband-web` npm package (WASM AudioWorklet) was evaluated and rejected. It lacks independent formant control (`setFormant()` not exposed), its real-time tempo/time-stretch is broken in 128-sample AudioWorklet blocks, and it causes BUFFER OVERRUN errors. The native Rubber Band CLI binary solves all three issues.
-- **Integration:** Runs as `child_process.spawn` in main process. Renderer sends audio + parameters via IPC, main runs the CLI, returns processed audio. This is Stage 1 of the three-stage pipeline (see architecture.md).
-- **Key flags:** `--pitch` (semitones), `--formant` (preserve formants — the critical flag), `--tempo` (time-stretch ratio), `--fine` (high quality)
-- **Binary source:** Pre-built Rubber Band CLI binary, bundled in `src/assets/rubberband/`. Fetched on `pnpm install` by postinstall script.
-- **License:** GPL-2.0 — acceptable for our use case (VoxSmith is not distributed as a library)
-- **Note:** `rubberband-web` remains as a dev dependency temporarily for the Sprint 1 spike test UI. It will be removed when Sprint 2 implements the native binary pipeline.
-- **Install:** Binary fetched by postinstall script (no npm package for the CLI itself)
+- **Distribution:** Bundled CLI binary + shared library DLL inside the app. Zero user dependencies.
+- **Sprint 1 finding:** The `rubberband-web` npm package (WASM AudioWorklet) was evaluated and rejected. It lacks independent formant control (`setFormant()` not exposed), its real-time tempo/time-stretch is broken in 128-sample AudioWorklet blocks, and it causes BUFFER OVERRUN errors.
+- **Sprint 6 integration:** The Rubber Band C library API is called via Koffi FFI from the main process. `setFormantScale()` provides true single-pass formant shifting — no two-pass CLI workaround, no robotic artifacts. The CLI is still used for pitch/tempo-only processing.
+- **Key API:** `rubberband_new()`, `rubberband_set_formant_scale()`, `rubberband_set_pitch_scale()`, `rubberband_study()`, `rubberband_process()`, `rubberband_retrieve()`
+- **Key CLI flags:** `--pitch` (semitones), `--formant` (preserve formants), `--tempo` (time-stretch ratio), `--fine` (high quality)
+- **Binary source:** CLI (`rubberband.exe`) fetched by postinstall script. DLL (`rubberband-3.dll`) built from v4.0.0 source with Meson + MSVC and committed to git.
+- **License:** GPL-2.0 — acceptable for our use case (VoxSmith is AGPL-3.0)
+- **Note:** `rubberband-web` remains as a dev dependency temporarily for the Sprint 1 spike test UI. It will be removed in a future sprint.
+- **Install:** CLI binary fetched by postinstall script; DLL committed to git (no build tools needed for developers)
+
+### Koffi (FFI Library)
+- **Why:** Modern FFI for calling the Rubber Band C library API from Node.js. Compatible with Electron's V8 Memory Cage (unlike `node-ffi-napi` which is abandoned and crashes on Electron >= 21).
+- **Used for:** Calling `rubberband-3.dll` functions from the main process for single-pass formant shifting via `setFormantScale()`
+- **Ships prebuilt:** Koffi includes prebuilt binaries for all platforms — no C++ build tools needed
+- **Install:** `pnpm add koffi`
 
 ### WaveSurfer.js
 - **Why:** Battle-tested waveform rendering for web, supports seek, regions, real-time updates

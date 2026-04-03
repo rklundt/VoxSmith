@@ -1,6 +1,6 @@
 {
   "name": "voxsmith",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Desktop voice processing application for indie game developers",
   "main": "./out/main/index.js",
   "scripts": {
@@ -22,6 +22,7 @@
   "license": "GPL-2.0",
   "type": "module",
   "dependencies": {
+    "koffi": "^2.15.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "rubberband-web": "^0.2.1",

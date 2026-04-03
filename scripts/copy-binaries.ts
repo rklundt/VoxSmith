@@ -101,6 +101,22 @@ try {
   console.error('  ✗ Failed to check Rubber Band CLI binary:', err)
 }
 
+// ─── Rubber Band Shared Library DLL (Sprint 6 - formant shifting via Koffi FFI) ─
+// The DLL is built from Rubber Band Library v4.0.0 source and committed to git.
+// It provides setFormantScale() for true single-pass formant shifting.
+
+try {
+  const rubberbandDll = path.join(projectRoot, 'src', 'assets', 'rubberband', 'rubberband-3.dll')
+  if (fs.existsSync(rubberbandDll)) {
+    console.log('  ✓ Rubber Band shared library found at src/assets/rubberband/rubberband-3.dll')
+  } else {
+    console.warn('  ⚠ Rubber Band shared library (rubberband-3.dll) not found')
+    console.warn('    Formant shifting will be disabled. Build from Rubber Band v4.0.0 source with Meson + MSVC.')
+  }
+} catch (err) {
+  console.error('  ✗ Failed to check Rubber Band shared library:', err)
+}
+
 // ─── Rubber Band WASM (Sprint 1 spike - retained for backwards compatibility) ─
 
 try {

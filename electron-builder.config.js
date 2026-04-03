@@ -43,7 +43,7 @@ module.exports = {
   },
   extraResources: [
     { from: 'src/assets/ffmpeg', to: 'ffmpeg', filter: ['**/*'] },
-    // Rubber Band CLI binary - used for Stage 1 offline processing (pitch/formant/tempo)
+    // Rubber Band CLI binary (pitch/tempo) + shared library DLL (formant via Koffi FFI)
     { from: 'src/assets/rubberband', to: 'rubberband', filter: ['*.exe', '*.dll'] },
     // Rubber Band WASM - retained from Sprint 1 spike (may be removed in future)
     { from: 'src/assets/rubberband-wasm', to: 'rubberband-wasm', filter: ['**/*'] },

@@ -29,10 +29,11 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import type winston from 'winston'
 import { IPC } from '../../shared/constants'
-import type { AppSettings, Preset, AudioProcessRequest } from '../../shared/types'
+import type { AppSettings, Preset, AudioProcessRequest, ExportRequest } from '../../shared/types'
 import { loadSettings, saveSettingsOverride } from '../fileSystem/settings'
 import { processAudio, cancelProcessing } from '../rubberband/processAudio'
 import { loadAllPresets, savePreset, deletePreset, savePortrait, resolvePortraitUri } from '../fileSystem/presets'
+import { exportWav } from '../ffmpeg/exportWav'
 
 /**
  * Registers all IPC handlers.
@@ -131,16 +132,49 @@ export function registerIpcHandlers(logger: winston.Logger): void {
     }
   })
 
-  // ─── Export (stubs - Sprint 6) ───────────────────────────────────────
+  // ─── Export (Sprint 6) ───────────────────────────────────────────────
 
-  ipcMain.handle(IPC.EXPORT_WAV, async () => {
-    logger.debug(`IPC: ${IPC.EXPORT_WAV} - stub`)
-    return { success: false, error: 'Export not implemented yet' }
+  ipcMain.handle(IPC.EXPORT_WAV, async (_event, request: ExportRequest) => {
+    logger.info(`IPC: ${IPC.EXPORT_WAV} - exporting to "${request.outputPath}" (${request.bitDepth}-bit, ${request.sampleRate}Hz)`)
+    try {
+      const result = await exportWav(request, logger)
+      if (result.success) {
+        logger.info(`IPC: ${IPC.EXPORT_WAV} - success: ${result.outputPath}`)
+      } else {
+        logger.error(`IPC: ${IPC.EXPORT_WAV} - failed: ${result.error}`)
+      }
+      return result
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      logger.error(`IPC: ${IPC.EXPORT_WAV} - unhandled error: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
   })
 
-  ipcMain.handle(IPC.EXPORT_BATCH, async () => {
-    logger.debug(`IPC: ${IPC.EXPORT_BATCH} - stub`)
-    return { results: [], successCount: 0, failureCount: 0 }
+  ipcMain.handle(IPC.EXPORT_BATCH, async (_event, request: { exports: ExportRequest[] }) => {
+    logger.info(`IPC: ${IPC.EXPORT_BATCH} - batch exporting ${request.exports.length} files`)
+    const results = []
+    let successCount = 0
+    let failureCount = 0
+
+    for (const exportReq of request.exports) {
+      try {
+        const result = await exportWav(exportReq, logger)
+        results.push(result)
+        if (result.success) {
+          successCount++
+        } else {
+          failureCount++
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        results.push({ success: false, error: errorMsg })
+        failureCount++
+      }
+    }
+
+    logger.info(`IPC: ${IPC.EXPORT_BATCH} - complete (${successCount} success, ${failureCount} failed)`)
+    return { results, successCount, failureCount }
   })
 
   // ─── Stage 1 - Offline Audio Processing (Sprint 2) ────────────────────
@@ -177,9 +211,33 @@ export function registerIpcHandlers(logger: winston.Logger): void {
     return null
   })
 
-  ipcMain.handle(IPC.DIALOG_SAVE_WAV, async () => {
-    logger.debug(`IPC: ${IPC.DIALOG_SAVE_WAV} - stub`)
-    return null
+  ipcMain.handle(IPC.DIALOG_SAVE_WAV, async (_event, suggestedName: string) => {
+    logger.debug(`IPC: ${IPC.DIALOG_SAVE_WAV} - opening save dialog (suggested: ${suggestedName})`)
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const dialogOptions: Electron.SaveDialogOptions = {
+        title: 'Export Audio',
+        defaultPath: suggestedName || 'export.wav',
+        filters: [
+          { name: 'WAV Audio', extensions: ['wav'] },
+        ],
+      }
+
+      const result = win
+        ? await dialog.showSaveDialog(win, dialogOptions)
+        : await dialog.showSaveDialog(dialogOptions)
+
+      if (result.canceled || !result.filePath) {
+        logger.debug(`IPC: ${IPC.DIALOG_SAVE_WAV} - user cancelled`)
+        return null
+      }
+
+      logger.debug(`IPC: ${IPC.DIALOG_SAVE_WAV} - selected: ${result.filePath}`)
+      return result.filePath
+    } catch (err) {
+      logger.error(`IPC: ${IPC.DIALOG_SAVE_WAV} - failed: ${err}`)
+      return null
+    }
   })
 
   ipcMain.handle(IPC.DIALOG_OPEN_IMAGE, async () => {
