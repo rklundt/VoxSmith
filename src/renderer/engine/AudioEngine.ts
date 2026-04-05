@@ -37,7 +37,12 @@
  * WHAT THIS CLASS DOES NOT OWN:
  * - Stage 1 processing (that's in main process via IPC)
  * - UI state (that's in engineStore via Zustand)
- * - Mic input (Sprint 7)
+ *
+ * MIC INPUT (Sprint 7):
+ * Mic audio routes through the same effects chain as file playback.
+ * A MediaStreamSource replaces the AudioBufferSourceNode as the signal source.
+ * Recording captures raw (pre-effects) audio via an AudioWorkletNode tap
+ * so takes can be re-processed with different settings later.
  *
  * SINGLETON PATTERN:
  * There should only be one AudioEngine per app session. The useAudioEngine hook
@@ -46,6 +51,8 @@
  */
 
 import { EffectsChain } from './EffectsChain'
+import { acquireMicStream, releaseMicStream, RecordingBuffer } from './MicInput'
+import type { MicStreamOptions } from './MicInput'
 import type { EngineSnapshot, EffectName } from '../../shared/types'
 
 export type PlaybackStatus = 'idle' | 'playing' | 'paused'
@@ -90,6 +97,64 @@ export class AudioEngine {
   // Setting sourceNode.loop = true tells Web Audio to loop natively (no gap, seamless).
   private _loop = false
 
+  // ─── Mic Input (Sprint 7) ─────────────────────────────────────────────
+
+  // The active MediaStream from getUserMedia. Null when not in mic mode.
+  private micStream: MediaStream | null = null
+
+  // MediaStreamSourceNode connects the mic stream to the audio graph.
+  // Created fresh each time mic input starts (like AudioBufferSourceNode, it's tied
+  // to a specific stream and cannot be reattached).
+  private micSourceNode: MediaStreamAudioSourceNode | null = null
+
+  // Whether the engine is currently in mic input mode vs file playback mode.
+  // When true, Stage 1 controls (pitch/formant/tempo) should be disabled in the UI.
+  private _micActive = false
+
+  // Monitor mute: when true, mic audio does NOT go to speakers/headphones.
+  // Recording still captures raw audio. This prevents feedback loops when
+  // the user doesn't have headphones — the mic picks up speaker output,
+  // which gets re-processed (especially noticeable with reverb/delay effects).
+  // Default is true (muted) to prevent feedback by default.
+  private _monitorMuted = true
+
+  // GainNode used to mute/unmute monitoring output. Sits between the effects
+  // chain output and the analyser→destination. When muted, gain=0 silences
+  // speakers but the recording tap (before effects) still captures audio.
+  private monitorGain: GainNode
+
+  // ─── Recording (Sprint 7) ───────────────────────────────────────────
+
+  // AudioWorkletNode taps the pre-effects signal to capture raw mic audio.
+  // We capture pre-effects so recorded takes can be re-processed with different
+  // Stage 2 settings later. The user hears post-effects audio through speakers.
+  //
+  // PARALLEL TAP ARCHITECTURE: The recorder is connected as a side-branch off
+  // the mic source, NOT inline in the monitoring path. This avoids any audio
+  // interruption when recording starts/stops:
+  //   mic ──┬── volumeGain → effects → speakers  (monitoring, never touched)
+  //         └── recorderNode → (nowhere)           (capture only)
+  //
+  // The worklet processor (recorder-processor.js) runs on the audio rendering
+  // thread and sends sample copies to the main thread via MessagePort.
+  private recorderNode: AudioWorkletNode | null = null
+
+  // Whether the recorder worklet module has been loaded (addModule is async,
+  // must be called once before creating any AudioWorkletNode).
+  private recorderWorkletReady = false
+
+  // Silent gain node connected to destination — keeps the recorder worklet alive.
+  // Some browsers won't call process() on an AudioWorkletNode whose output
+  // goes nowhere (optimization). Connecting through a zero-gain node to
+  // destination forces the browser to keep processing the node.
+  private recorderKeepAlive: GainNode | null = null
+
+  // Collects raw PCM samples during recording
+  private recordingBuffer: RecordingBuffer | null = null
+
+  // Whether we're currently recording audio from the mic
+  private _isRecording = false
+
   // ─── Level Metering (Sprint 4) ───────────────────────────────────────
 
   // AnalyserNode sits at the end of the signal chain (after effects, before destination).
@@ -123,10 +188,17 @@ export class AudioEngine {
     this.analyser.smoothingTimeConstant = 0.8
     this.analyserData = new Float32Array(this.analyser.fftSize)
 
-    // Wire: volumeGain -> effectsChain.input -> [chain] -> effectsChain.output -> analyser -> destination
+    // Monitor gain control — sits between analyser and destination.
+    // When muted (gain=0), no audio goes to speakers/headphones.
+    // The analyser still reads levels (it's before the monitor gate).
+    this.monitorGain = this.ctx.createGain()
+    this.monitorGain.gain.value = 1.0 // unmuted by default for file playback
+
+    // Wire: volumeGain -> effectsChain.input -> [chain] -> effectsChain.output -> analyser -> monitorGain -> destination
     this.volumeGain.connect(this.effectsChain.input)
     this.effectsChain.output.connect(this.analyser)
-    this.analyser.connect(this.ctx.destination)
+    this.analyser.connect(this.monitorGain)
+    this.monitorGain.connect(this.ctx.destination)
   }
 
   // ─── Buffer Management ────────────────────────────────────────────────
@@ -374,10 +446,11 @@ export class AudioEngine {
       }
       return Math.min(position, duration)
     }
-    if (this._status === 'paused') {
-      return this.playbackOffset
-    }
-    return 0
+    // When paused or idle, return the stored offset. This covers:
+    //  - Paused: offset is where playback was paused
+    //  - Idle after seek: user clicked waveform to position cursor, seek() stored it
+    //  - Idle after stop: stop() resets offset to 0, so this still returns 0
+    return this.playbackOffset
   }
 
   // ─── Level Metering (Sprint 4) ────────────────────────────────────────
@@ -570,16 +643,251 @@ export class AudioEngine {
     }
   }
 
+  // ─── Mic Input (Sprint 7) ──────────────────────────────────────────────
+
+  /** Whether the engine is in mic input mode */
+  get micActive(): boolean {
+    return this._micActive
+  }
+
+  /** Whether audio is currently being recorded */
+  get isRecording(): boolean {
+    return this._isRecording
+  }
+
+  /** Whether monitoring output is muted (no audio to speakers) */
+  get monitorMuted(): boolean {
+    return this._monitorMuted
+  }
+
+  /**
+   * Mutes or unmutes monitoring output.
+   *
+   * When muted, mic audio still flows through the effects chain (for recording
+   * and level metering) but nothing goes to speakers/headphones. This prevents
+   * feedback loops when the user isn't wearing headphones.
+   *
+   * File playback is NOT affected by this — only mic monitoring respects the mute.
+   * When mic stops, monitor is automatically unmuted for normal playback.
+   */
+  setMonitorMute(muted: boolean): void {
+    this._monitorMuted = muted
+    // Only apply the mute when mic is active — don't silence file playback
+    if (this._micActive) {
+      this.monitorGain.gain.setValueAtTime(muted ? 0 : 1, this.ctx.currentTime)
+    }
+  }
+
+  /**
+   * Starts live mic input through the effects chain.
+   *
+   * Acquires a MediaStream for the specified device, creates a
+   * MediaStreamSourceNode, and routes it through the same effects chain
+   * used for file playback. The user hears their processed voice in
+   * real time — this is the monitoring path.
+   *
+   * File playback is stopped when mic input starts. The two input modes
+   * are mutually exclusive to prevent signal conflicts in the chain.
+   *
+   * @param options - Mic stream options (device ID, etc.)
+   */
+  async startMicInput(options: MicStreamOptions = {}): Promise<void> {
+    // Stop any file playback first — can't have two sources in the chain
+    this.stop()
+
+    // Ensure context is running (autoplay policy may have suspended it)
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume()
+    }
+
+    // Acquire the mic stream with the specified options
+    this.micStream = await acquireMicStream(options)
+
+    // Create a source node from the mic stream and route it into the effects chain.
+    // MediaStreamSourceNode is the bridge between getUserMedia and Web Audio API.
+    this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream)
+    this.micSourceNode.connect(this.volumeGain)
+
+    // Set up the recorder worklet as a persistent parallel tap on the mic source.
+    // The recorder node stays connected for the entire mic session — starting and
+    // stopping recording just sends messages to toggle sample forwarding.
+    // This eliminates per-recording node creation/connection overhead that was
+    // causing ~1s of audio to be lost at the start of each recording.
+    await this.ensureRecorderWorklet()
+    this.recorderNode = new AudioWorkletNode(this.ctx, 'recorder-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      channelCount: 1,
+    })
+
+    // Listen for sample chunks — only collected when _isRecording is true
+    this.recorderNode.port.onmessage = (event: MessageEvent) => {
+      if (event.data.type === 'samples' && this.recordingBuffer && this._isRecording) {
+        this.recordingBuffer.addChunk(event.data.data as Float32Array)
+      }
+    }
+
+    // Connect recorder as a parallel tap with a keep-alive to destination.
+    // The keep-alive (zero-gain) ensures the browser keeps calling process()
+    // on the worklet even though the output produces no audible sound.
+    this.recorderKeepAlive = this.ctx.createGain()
+    this.recorderKeepAlive.gain.value = 0
+    this.micSourceNode.connect(this.recorderNode)
+    this.recorderNode.connect(this.recorderKeepAlive)
+    this.recorderKeepAlive.connect(this.ctx.destination)
+
+    this._micActive = true
+
+    // Apply monitor mute state — prevents feedback when not using headphones.
+    // Default is muted to be safe. User can unmute if wearing headphones.
+    this.monitorGain.gain.setValueAtTime(this._monitorMuted ? 0 : 1, this.ctx.currentTime)
+  }
+
+  /**
+   * Stops mic input and releases the microphone.
+   *
+   * Disconnects the mic source node and stops all MediaStream tracks.
+   * If recording is in progress, it is stopped first and the partial take
+   * is preserved (the recording buffer still has the captured samples).
+   */
+  stopMicInput(): void {
+    // Stop recording if it's in progress
+    if (this._isRecording) {
+      this.stopRecording()
+    }
+
+    // Clean up the persistent recorder tap and keep-alive
+    if (this.recorderNode) {
+      this.recorderNode.port.onmessage = null
+      this.recorderNode.disconnect()
+      this.recorderNode = null
+    }
+    if (this.recorderKeepAlive) {
+      this.recorderKeepAlive.disconnect()
+      this.recorderKeepAlive = null
+    }
+
+    // Disconnect the mic source from the audio graph
+    if (this.micSourceNode) {
+      this.micSourceNode.disconnect()
+      this.micSourceNode = null
+    }
+
+    // Release the MediaStream (frees the microphone hardware)
+    if (this.micStream) {
+      releaseMicStream(this.micStream)
+      this.micStream = null
+    }
+
+    this._micActive = false
+
+    // Restore monitor output for file playback — unmute regardless of mic mute setting
+    this.monitorGain.gain.setValueAtTime(1, this.ctx.currentTime)
+  }
+
+  // ─── Recording (Sprint 7) ────────────────────────────────────────────
+
+  /**
+   * Ensures the recorder AudioWorklet module is loaded.
+   *
+   * AudioContext.audioWorklet.addModule() is async and must complete before
+   * any AudioWorkletNode using that processor can be created. We call this
+   * lazily on first recording attempt rather than at construction time,
+   * because the AudioContext might be suspended (no user gesture yet).
+   */
+  private async ensureRecorderWorklet(): Promise<void> {
+    if (this.recorderWorkletReady) return
+
+    // Load the recorder processor module from the public directory.
+    // In dev: Vite serves /recorder-processor.js from src/renderer/public/
+    // In production: it's bundled into the renderer output directory.
+    await this.ctx.audioWorklet.addModule('/recorder-processor.js')
+    this.recorderWorkletReady = true
+  }
+
+  /**
+   * Starts recording audio from the active mic input.
+   *
+   * Creates an AudioWorkletNode (recorder-processor) that taps the
+   * pre-effects signal path. The worklet runs on the audio rendering thread
+   * and sends raw mono samples to the main thread via MessagePort.
+   *
+   * The worklet passes audio through to its output for monitoring —
+   * it's transparent in the signal chain.
+   *
+   * MUST be called after startMicInput() — throws if mic is not active.
+   */
+  async startRecording(): Promise<void> {
+    if (!this._micActive || !this.micSourceNode) {
+      throw new Error('Cannot start recording: mic input is not active')
+    }
+    if (!this.recorderNode) {
+      throw new Error('Cannot start recording: recorder worklet not initialized')
+    }
+
+    // Create a fresh recording buffer at the context's sample rate
+    this.recordingBuffer = new RecordingBuffer(this.ctx.sampleRate)
+
+    // Tell the persistent recorder worklet to start forwarding samples.
+    // The node is already connected and processing audio (created during
+    // startMicInput). This message just flips a boolean on the audio thread —
+    // no node creation, no connection changes, virtually zero latency.
+    this.recorderNode.port.postMessage({ type: 'start' })
+
+    this._isRecording = true
+  }
+
+  /**
+   * Stops recording and returns the captured audio as an AudioBuffer.
+   *
+   * The recorder worklet tap is disconnected from the mic source.
+   * The monitoring path (mic → volumeGain → effects) is never touched,
+   * so there's no audio interruption.
+   *
+   * @returns The recorded AudioBuffer (mono, at context sample rate), or null
+   *   if no samples were captured (e.g., recording was stopped immediately).
+   */
+  stopRecording(): AudioBuffer | null {
+    this._isRecording = false
+
+    // Tell the worklet processor to stop forwarding samples.
+    // The recorder node stays connected — it just stops posting sample
+    // chunks to the main thread. Ready for the next recording instantly.
+    if (this.recorderNode) {
+      this.recorderNode.port.postMessage({ type: 'stop' })
+    }
+
+    // Convert the recording buffer to an AudioBuffer
+    if (this.recordingBuffer && this.recordingBuffer.sampleCount > 0) {
+      const audioBuffer = this.recordingBuffer.toAudioBuffer(this.ctx)
+      this.recordingBuffer = null
+      return audioBuffer
+    }
+
+    this.recordingBuffer = null
+    return null
+  }
+
+  /**
+   * Returns the current recording duration in milliseconds.
+   * Used by the UI to show a live recording timer.
+   */
+  get recordingDurationMs(): number {
+    return this.recordingBuffer?.durationMs ?? 0
+  }
+
   // ─── Lifecycle ────────────────────────────────────────────────────────
 
   /**
-   * Tears down the engine: stops playback, disposes effects chain,
+   * Tears down the engine: stops playback, stops mic, disposes effects chain,
    * and closes the AudioContext. Call on app unmount.
    */
   async dispose(): Promise<void> {
+    this.stopMicInput()
     this.stop()
     this.effectsChain.dispose()
     this.analyser.disconnect()
+    this.monitorGain.disconnect()
     this.volumeGain.disconnect()
     if (this.ctx.state !== 'closed') {
       await this.ctx.close()

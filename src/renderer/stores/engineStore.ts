@@ -33,7 +33,7 @@
  */
 
 import { create } from 'zustand'
-import type { EngineSnapshot } from '../../shared/types'
+import type { EngineSnapshot, RecordingState, Take, PunchInRegion } from '../../shared/types'
 import { DEFAULT_ENGINE_SNAPSHOT } from '../../shared/constants'
 
 // ─── Stage 1 Processing State ─────────────────────────────────────────────
@@ -87,6 +87,43 @@ interface EngineState {
    *  True = the user hears stale audio. They need to click "Apply". */
   isStale: boolean
 
+  // ─── Mic / Recording State (Sprint 7) ────────────────────────────────
+
+  /** Whether mic input is active (routing through effects chain) */
+  micActive: boolean
+
+  /** Current recording state machine position */
+  recordingState: RecordingState
+
+  /** Count-in beats remaining (0 = not counting in) */
+  countInBeats: number
+
+  /** Count-in total beats setting (1-4) */
+  countInTotal: number
+
+  /** List of recorded takes in the current session */
+  takes: Take[]
+
+  /** ID of the take currently selected for audition */
+  selectedTakeId: string | null
+
+  /** Recording duration in ms (updated live during recording) */
+  recordingDurationMs: number
+
+  /** Whether monitoring is muted (no audio to speakers during mic mode) */
+  monitorMuted: boolean
+
+  /** Whether noise suppression is enabled for mic input.
+   *  Sprint 7.2: will control RNNoise WASM AudioWorklet in the signal chain.
+   *  (WebRTC getUserMedia constraint was tested and doesn't work in Electron.) */
+  noiseSuppression: boolean
+
+  /** Mic permission error message, if any */
+  micError: string | null
+
+  /** Selected waveform region for punch-in recording (null = no region selected) */
+  punchInRegion: PunchInRegion | null
+
   // ─── Actions ────────────────────────────────────────────────────────
 
   /** Update the full engine snapshot (e.g., preset load, reset) */
@@ -118,6 +155,47 @@ interface EngineState {
 
   /** Reset Stage 1 state (e.g., when loading a new file) */
   resetStage1: () => void
+
+  // ─── Mic / Recording Actions (Sprint 7) ─────────────────────────────
+
+  /** Set mic active state */
+  setMicActive: (active: boolean) => void
+
+  /** Set input mode (file vs mic) */
+  setInputMode: (mode: 'file' | 'mic') => void
+
+  /** Set recording state */
+  setRecordingState: (state: RecordingState) => void
+
+  /** Set count-in beats remaining */
+  setCountInBeats: (beats: number) => void
+
+  /** Set count-in total beats setting */
+  setCountInTotal: (total: number) => void
+
+  /** Add a take to the list */
+  addTake: (take: Take) => void
+
+  /** Remove a take by ID */
+  removeTake: (id: string) => void
+
+  /** Select a take for audition */
+  selectTake: (id: string | null) => void
+
+  /** Update the live recording duration display */
+  setRecordingDurationMs: (ms: number) => void
+
+  /** Set monitor mute state */
+  setMonitorMuted: (muted: boolean) => void
+
+  /** Set mic error message */
+  setMicError: (error: string | null) => void
+
+  /** Toggle noise suppression for mic input (Sprint 7.2: RNNoise WASM) */
+  setNoiseSuppression: (enabled: boolean) => void
+
+  /** Set the punch-in region (waveform selection), or null to clear */
+  setPunchInRegion: (region: PunchInRegion | null) => void
 }
 
 /**
@@ -167,6 +245,19 @@ export const useEngineStore = create<EngineState>((set, get) => ({
   appliedStage1Params: null,
   isStale: false,
 
+  // Mic / Recording (Sprint 7)
+  micActive: false,
+  monitorMuted: true,    // muted by default to prevent speaker→mic feedback
+  noiseSuppression: true, // ON by default — Sprint 7.2 will wire this to RNNoise WASM AudioWorklet
+  recordingState: 'idle',
+  countInBeats: 0,
+  countInTotal: 3,       // default 3-beat count-in
+  takes: [],
+  selectedTakeId: null,
+  recordingDurationMs: 0,
+  micError: null,
+  punchInRegion: null,
+
   setSnapshot: (snapshot) => set({
     snapshot,
     isStale: computeIsStale(snapshot, get().appliedStage1Params, get().hasProcessed),
@@ -209,4 +300,23 @@ export const useEngineStore = create<EngineState>((set, get) => ({
     hasProcessed: false,
     isStale: false,
   }),
+
+  // Mic / Recording actions (Sprint 7)
+  setMicActive: (active) => set({ micActive: active }),
+  setInputMode: (mode) => set({ inputMode: mode }),
+  setRecordingState: (state) => set({ recordingState: state }),
+  setCountInBeats: (beats) => set({ countInBeats: beats }),
+  setCountInTotal: (total) => set({ countInTotal: Math.max(0, Math.min(4, total)) }),
+  addTake: (take) => set((s) => ({ takes: [...s.takes, take] })),
+  removeTake: (id) => set((s) => ({
+    takes: s.takes.filter((t) => t.id !== id),
+    // Deselect if the removed take was selected
+    selectedTakeId: s.selectedTakeId === id ? null : s.selectedTakeId,
+  })),
+  selectTake: (id) => set({ selectedTakeId: id }),
+  setRecordingDurationMs: (ms) => set({ recordingDurationMs: ms }),
+  setMonitorMuted: (muted) => set({ monitorMuted: muted }),
+  setMicError: (error) => set({ micError: error }),
+  setNoiseSuppression: (enabled) => set({ noiseSuppression: enabled }),
+  setPunchInRegion: (region) => set({ punchInRegion: region }),
 }))

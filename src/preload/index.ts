@@ -53,6 +53,10 @@ const IPC = {
   DIALOG_OPEN_WAV: 'dialog:open-wav',
   DIALOG_SAVE_WAV: 'dialog:save-wav',
   DIALOG_OPEN_IMAGE: 'dialog:open-image',
+  TAKE_SAVE: 'take:save',
+  TAKE_LOAD: 'take:load',
+  TAKE_DELETE: 'take:delete',
+  TAKE_LIST: 'take:list',
 } as const
 
 /**
@@ -88,4 +92,10 @@ contextBridge.exposeInMainWorld('voxsmith', {
   openWavDialog: () => ipcRenderer.invoke(IPC.DIALOG_OPEN_WAV),
   saveWavDialog: (name: string) => ipcRenderer.invoke(IPC.DIALOG_SAVE_WAV, name),
   openImageDialog: () => ipcRenderer.invoke(IPC.DIALOG_OPEN_IMAGE),
+
+  // ─── Take Management (Sprint 7) ───────────────────────────────────
+  saveTake: (request: unknown) => ipcRenderer.invoke(IPC.TAKE_SAVE, request),
+  loadTake: (takeId: string) => ipcRenderer.invoke(IPC.TAKE_LOAD, takeId),
+  deleteTake: (takeId: string) => ipcRenderer.invoke(IPC.TAKE_DELETE, takeId),
+  listTakes: () => ipcRenderer.invoke(IPC.TAKE_LIST),
 })

@@ -146,9 +146,24 @@ Input Source (switchable)
 
 **Wet/dry routing detail:** Each effect with a wet/dry control uses a parallel split topology. The input signal is split to both the effect node (wet path) and a direct GainNode (dry path). Both are summed into a blend GainNode. The `setWetDry(effect, mix)` method on AudioEngine adjusts the gain levels of each path. Effects without wet/dry control (HighPass, EQ, Compressor) are inline — they process the signal directly with no parallel dry path.
 
-### Mic Input Note
+### Mic Input (Sprint 7)
 
 Live microphone monitoring routes through Stage 2 only — no Stage 1 processing. Pitch/formant/tempo controls are disabled during live mic mode because they require offline processing. The user records first, then applies character voice settings. This is by design: the VoxSmith workflow is record → process → preview → export, not live voice-changing.
+
+**Implementation details:**
+- `MicInput.ts` handles device enumeration (`enumerateDevices`), stream acquisition (`getUserMedia`), and recording buffer management
+- `AudioEngine.startMicInput()` creates a `MediaStreamSourceNode` and routes it through the same effects chain as file playback
+- Recording uses a persistent AudioWorkletNode (`recorder-processor.js`) tap connected in parallel to capture raw (pre-effects) audio so takes can be re-processed with different settings. The recorder node is created once at mic start and stays connected for the entire mic session — recording start/stop is a message, not a node creation.
+- Punch-in splices new audio into an existing take's buffer at sample-accurate boundaries. The splice fits the punch buffer to the exact region length (truncate/pad) to prevent time shifting.
+- Takes are stored as `AudioBuffer` in memory during the session, with optional IPC-based persistence to `userData/takes/`
+
+**Noise Suppression (Sprint 7.2 — planned):**
+- Electron/Chromium ignores the `getUserMedia` `noiseSuppression` constraint (tested: `track.getSettings()` always reports `false`)
+- Sprint 7.2 adds RNNoise WASM as an AudioWorklet in the signal chain: `mic → volumeGain → [RNNoise worklet] → effects chain`
+- The RNNoise worklet processes audio in real time, removing background noise before it reaches effects or speakers
+- The recorder tap captures audio BEFORE the RNNoise node (raw mic signal) for dry recording
+- Toggle on/off via message port — no mic restart required
+- Store state (`noiseSuppression`) and tooltip already in place from Sprint 7
 
 ### Custom AudioWorklet Processors
 

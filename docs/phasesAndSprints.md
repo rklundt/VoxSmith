@@ -420,23 +420,24 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - All takes are preserved until explicitly deleted
 
 **QA Checklist:**
-- [ ] Select mic input device from dropdown — correct device used
-- [ ] Monitor mic through effects chain — hear processed voice in real time
-- [ ] Verify monitoring latency is acceptable (< 30ms perceived)
-- [ ] Record a take — captured audio plays back with effects applied
-- [ ] Record multiple takes — all preserved in take list
-- [ ] Audition each take — correct audio plays for each
-- [ ] Delete a take — removed from list
-- [ ] Use count-in (1-4 beats) — recording starts after count
-- [ ] Punch-in on a specific section — only punched region re-recorded, clean splice
-- [ ] Keyboard shortcut for record/stop/punch-in — functional and displayed in UI
-- [ ] Adjust effects during recording — changes apply in real time
-- [ ] Playback at reduced speed — tempo changes without pitch change
-- [ ] Audio sanity: bypass toggle during mic monitoring — clean A/B
-- [ ] Audio sanity: switch from file input to mic input — no engine crash
-- [ ] Negative: deny microphone permission — clear message, app remains functional for file input
-- [ ] Negative: disconnect mic during recording — recording stops gracefully, partial take preserved
-- [ ] Negative: select non-existent device ID — error message, falls back to default mic
+- [x] Select mic input device from dropdown — correct device used
+- [x] Monitor mic through effects chain — hear processed voice in real time
+- [x] Verify monitoring latency is acceptable (< 30ms perceived)
+- [x] Record a take — captured audio plays back with effects applied
+- [x] Record multiple takes — all preserved in take list
+- [x] Audition each take — correct audio plays for each
+- [x] Delete a take — removed from list
+- [x] Use count-in (1-4 beats) — recording starts after count
+- [x] Punch-in on a specific section — only punched region re-recorded, clean splice
+- [x] Keyboard shortcut for record/stop/punch-in — functional and displayed in UI
+- [x] Adjust effects during recording — changes apply in real time
+- [x] Playback at reduced speed — tempo changes without pitch change
+- [x] Audio sanity: bypass toggle during mic monitoring — clean A/B
+- [x] Audio sanity: switch from file input to mic input — no engine crash
+- [ ] Negative: deny microphone permission — clear message, app remains functional for file input *(error handling in place, needs manual QA)*
+- [ ] Negative: disconnect mic during recording — recording stops gracefully, partial take preserved *(no track-ended handler yet — known limitation, non-blocking)*
+- [ ] Negative: select non-existent device ID — error message, falls back to default mic *(error handling in place, needs manual QA)*
+- ~~Noise suppression toggle~~ — **deferred to Sprint 7.2** (Electron ignores getUserMedia noiseSuppression constraint; RNNoise WASM planned)
 
 **Definition of Done:**
 - All acceptance criteria met
@@ -444,6 +445,106 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 - `package.json` version set to `0.7.0`
 - Audio sanity checklist from `testStrategy.md` passed
 - All Sprint 0-6 regression items re-verified
+
+---
+
+### Sprint 7.2 - Real-Time Noise Suppression (RNNoise WASM)
+
+**Goal:** Add real-time AI-based noise suppression to the microphone signal chain using RNNoise compiled to WebAssembly, running as an AudioWorklet processor. This replaces the non-functional WebRTC `getUserMedia` noiseSuppression constraint (which Electron/Chromium ignores).
+
+**Background:**
+Sprint 7 attempted noise suppression via the `getUserMedia({ audio: { noiseSuppression: true } })` constraint. Testing confirmed Electron silently ignores this — `track.getSettings()` always reports `noiseSuppression: false` regardless of the requested value. The WebRTC noise suppressor is not available in Electron's Chromium build.
+
+RNNoise is a neural-network-based noise suppression library developed by Mozilla/Xiph.org. It is used by Discord, OBS Studio, and other voice applications. It processes audio frame-by-frame, distinguishing speech from noise using a recurrent neural network. The model is small (~85KB) and runs in real time on any modern CPU.
+
+**Architecture:**
+
+```
+Mic → MediaStreamSource → volumeGain → [RNNoise AudioWorklet] → effects chain → speakers
+                              └── recorderNode (parallel tap, captures pre-effects raw audio)
+```
+
+The RNNoise AudioWorklet sits between the volume gain node and the effects chain input. It processes the mic signal in real time, removing background noise before it reaches the effects chain or recording tap. When disabled, the worklet passes audio through unchanged (bypass mode via message port).
+
+The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the user can re-process with different noise suppression settings later. This matches the existing "dry recording" architecture.
+
+**Key Technical Details:**
+
+1. **RNNoise WASM Binary:** Must be bundled locally in the project directory (e.g., `src/assets/rnnoise/`) so that `pnpm install && pnpm dev` works immediately on a fresh clone. No external downloads at runtime. The binary should be fetched or compiled once and committed to the assets directory (same pattern as FFmpeg and Rubber Band).
+
+2. **AudioWorklet Processor:** A new `rnnoise-processor.js` (or `.ts` compiled) AudioWorklet processor that:
+   - Loads the RNNoise WASM binary in the worklet scope
+   - Processes audio in 480-sample frames (RNNoise's fixed frame size = 10ms at 48kHz)
+   - Handles sample rate mismatch: if AudioContext is 44100Hz, resample to 48kHz internally, process, resample back (RNNoise requires 48kHz)
+   - Supports enable/disable via message port (bypass mode)
+   - Reports VAD (Voice Activity Detection) probability back to main thread via message port (RNNoise outputs this for free — useful for future features like auto-silence-trim)
+
+3. **Frame Buffering:** Web Audio AudioWorklet processes in 128-sample render quanta. RNNoise needs 480-sample frames. The processor must buffer input samples and process in 480-sample chunks, outputting processed audio back in 128-sample blocks. This introduces ~10ms latency (one RNNoise frame).
+
+4. **Store State (already exists):**
+   - `noiseSuppression: boolean` — toggle in engineStore (preserved from Sprint 7)
+   - `setNoiseSuppression()` — action in engineStore (preserved from Sprint 7)
+   - When toggled, send a message to the AudioWorklet to enable/disable processing
+
+5. **UI Toggle (re-add to RecordingPanel):**
+   - Re-add the noise suppression toggle button in RecordingPanel.tsx
+   - Reads from `useEngineStore((s) => s.noiseSuppression)`
+   - Tooltip already updated in `tooltips.ts` for RNNoise
+
+6. **Bundled Binary Strategy:**
+   - Add RNNoise WASM (`.wasm` file + JS glue if needed) to `src/assets/rnnoise/`
+   - Update `scripts/copy-binaries.ts` to include RNNoise in the copy step
+   - WASM binary must be accessible from the renderer's public directory (same pattern as `recorder-processor.js` in `src/renderer/public/`)
+   - The AudioWorklet processor file goes in `src/renderer/public/rnnoise-processor.js`
+
+**Sources for RNNoise WASM:**
+- Search npm for `rnnoise-wasm` or `rnnoise` packages with pre-compiled WASM binaries
+- RNNoise upstream C source: Xiph.org / Mozilla (compile with Emscripten if no suitable npm package)
+- Evaluate npm packages first for ease of integration. If none provide a clean WASM binary suitable for AudioWorklet use, compile from the C source using Emscripten.
+- Key requirement: the WASM binary must be loadable inside an AudioWorklet scope (not just main thread)
+
+**What's Already In Place (from Sprint 7):**
+- `engineStore.ts`: `noiseSuppression` state + `setNoiseSuppression` action (lines 119, 195, 251, 320)
+- `tooltips.ts`: `noiseSuppression` entry already updated for RNNoise (label, detail, poweredBy)
+- `MicInput.ts`: `MicStreamOptions` interface with comment noting Sprint 7.2 plan
+- `RecordingPanel.tsx`: Comment placeholder noting where toggle will be re-added (lines 79-80)
+- `AudioEngine.ts`: Mic signal chain architecture with parallel recorder tap
+
+**User Stories:**
+- As a user, I can toggle noise suppression on/off during mic monitoring so that background noise (fan, AC, keyboard, room tone) is removed from my voice signal in real time
+- As a user, noise suppression processes audio with minimal added latency (~10ms) so that monitoring feels responsive
+- As a user, my recorded takes capture raw (pre-noise-suppression) audio so that I can re-process with different settings later
+- As a developer, the RNNoise WASM binary is bundled locally so that `pnpm install && pnpm dev` works on a fresh clone with no external downloads
+- As a developer, the RNNoise AudioWorklet reports VAD probability so that future features (auto-silence-trim, recording auto-stop) can use it
+
+**Acceptance Criteria:**
+- Noise suppression audibly removes background noise (fan, AC, room tone) from mic signal
+- Toggle on/off works in real time without restarting the mic
+- Added latency from noise suppression is imperceptible (< 15ms)
+- Recorded takes contain raw audio (not noise-suppressed) for re-processing
+- RNNoise WASM loads without CSP violations in Electron
+- Fresh clone: `pnpm install && pnpm dev` — noise suppression works without manual setup
+- VAD probability is available via message port (logged to console for verification)
+
+**QA Checklist:**
+- [ ] Toggle noise suppression ON — background noise (fan/AC) audibly reduced during monitoring
+- [ ] Toggle noise suppression OFF — background noise returns to normal level
+- [ ] Toggle while monitoring — no audio dropout or click during switch
+- [ ] Record a take with noise suppression ON — playback of the take has raw audio (noise present), confirming dry recording
+- [ ] Enable noise suppression, record, disable, record again — both takes contain raw audio
+- [ ] Speak normally with suppression ON — voice quality is natural, not robotic or degraded
+- [ ] Check monitoring latency with suppression ON — no perceptible additional delay
+- [ ] Tooltip on toggle reads correctly (sourced from `tooltips.ts`)
+- [ ] Console shows VAD probability updates during speech
+- [ ] Fresh clone: `pnpm install && pnpm dev` — suppression toggle works
+- [ ] Negative: corrupt/delete RNNoise WASM file — graceful fallback (passthrough), error logged, toggle disabled with message
+- [ ] Negative: enable suppression with no mic active — no crash, toggle state preserved for next mic start
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.2`
+- All Sprint 0-7 regression items re-verified
 
 ---
 

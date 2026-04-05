@@ -52,6 +52,14 @@ export const IPC = {
   DIALOG_OPEN_WAV: 'dialog:open-wav',      // renderer → main: void → string (file path)
   DIALOG_SAVE_WAV: 'dialog:save-wav',      // renderer → main: string (suggested name) → string (path)
   DIALOG_OPEN_IMAGE: 'dialog:open-image',  // renderer → main: void → string (file path)
+
+  // Recording / Take management (Sprint 7)
+  // Takes are recorded in the renderer (MediaRecorder + Web Audio) and saved
+  // to a temp directory in the main process for persistence across sessions.
+  TAKE_SAVE: 'take:save',                  // renderer → main: TakeSaveRequest → TakeSaveResult
+  TAKE_LOAD: 'take:load',                  // renderer → main: takeId → TakeLoadResult
+  TAKE_DELETE: 'take:delete',              // renderer → main: takeId → { success: boolean }
+  TAKE_LIST: 'take:list',                  // renderer → main: void → Take[]
 } as const
 
 // ─── Default Engine Snapshot ─────────────────────────────────────────────────

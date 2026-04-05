@@ -255,3 +255,90 @@ export interface BatchExportResult {
   /** Number of failed exports */
   failureCount: number
 }
+
+// ─── Recording / Mic Input Types ─────────────────────────────────────────────
+
+/**
+ * A microphone device available for recording.
+ * Populated from navigator.mediaDevices.enumerateDevices().
+ */
+export interface MicDevice {
+  /** MediaDeviceInfo.deviceId — passed to getUserMedia constraints */
+  deviceId: string
+  /** Human-readable label (e.g. "Blue Yeti Stereo") */
+  label: string
+}
+
+/**
+ * State machine for the recording workflow.
+ *
+ * idle      → user hasn't started recording yet (or has stopped)
+ * count-in  → metronome/countdown is playing before recording begins
+ * recording → audio is being captured from the mic
+ * stopped   → recording finished, take is available for audition
+ */
+export type RecordingState = 'idle' | 'count-in' | 'recording' | 'stopped'
+
+/**
+ * A single recorded take.
+ *
+ * Takes are kept in memory as AudioBuffers during the session and
+ * optionally saved to disk (as temp WAV files) via IPC for persistence.
+ */
+export interface Take {
+  /** Unique ID for this take (uuid or incremental) */
+  id: string
+  /** Display name, e.g. "Take 1", "Take 2" */
+  name: string
+  /** Duration in milliseconds */
+  durationMs: number
+  /** Timestamp when this take was recorded */
+  createdAt: number
+  /** File path in the temp takes directory (set after saving to disk) */
+  filePath?: string
+}
+
+/**
+ * Defines a punch-in region — a time range within an existing take
+ * that the user wants to re-record. Only the punched region is replaced;
+ * the rest of the take is preserved.
+ */
+export interface PunchInRegion {
+  /** Start time in seconds within the existing take */
+  startTime: number
+  /** End time in seconds within the existing take */
+  endTime: number
+}
+
+/**
+ * Request to save a recorded take to disk via IPC.
+ * The renderer sends the WAV-encoded buffer; main writes it to the takes directory.
+ */
+export interface TakeSaveRequest {
+  /** Take metadata */
+  take: Take
+  /** WAV-encoded audio data */
+  audioData: ArrayBuffer
+  /** Sample rate used during recording */
+  sampleRate: number
+}
+
+/**
+ * Result from saving a take to disk.
+ */
+export interface TakeSaveResult {
+  success: boolean
+  /** Full file path where the take was saved */
+  filePath?: string
+  error?: string
+}
+
+/**
+ * Result from loading a take from disk.
+ */
+export interface TakeLoadResult {
+  success: boolean
+  /** WAV audio data loaded from disk */
+  audioData?: ArrayBuffer
+  error?: string
+}

@@ -383,3 +383,5 @@ VoxSmith uses sprint-based semantic versioning:
 | Binary distribution | Not committed to git | FFmpeg and Rubber Band WASM fetched on `pnpm install` and copied via postinstall script |
 | Settings override | `config/settings.json` + `config/userSettingsOverride.json` | Committed defaults + gitignored user overrides, shallow merge on startup |
 | Preset file safety | Atomic write (temp + rename) | Prevents data loss from crash during save |
+| Noise suppression | RNNoise WASM (Sprint 7.2) | Electron ignores getUserMedia noiseSuppression constraint. RNNoise runs as AudioWorklet in signal chain for real-time noise removal. |
+| Recording architecture | Persistent AudioWorklet tap | Recorder node created once at mic start, stays connected. Start/stop recording is a message, not node creation — eliminates per-recording latency overhead. |

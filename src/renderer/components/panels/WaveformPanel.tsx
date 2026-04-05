@@ -39,8 +39,9 @@
  * waveform visualization and playhead display, while AudioEngine handles all audio.
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import WaveSurfer from 'wavesurfer.js'
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { useEngineStore } from '../../stores/engineStore'
 import { TOOLTIPS } from '../../../shared/tooltips'
 
@@ -103,10 +104,16 @@ export function WaveformPanel({
   const peakHoldRef = useRef(0)
   const peakDecayTimerRef = useRef(0)
 
+  // WaveSurfer Regions plugin ref — used to display the punch-in region overlay.
+  const regionsRef = useRef<RegionsPlugin | null>(null)
+
   // Store state
   const isPlaying = useEngineStore((s) => s.isPlaying)
+  const micActive = useEngineStore((s) => s.micActive)
   const hasFile = useEngineStore((s) => s.hasFile)
   const hasProcessed = useEngineStore((s) => s.hasProcessed)
+  const punchInRegion = useEngineStore((s) => s.punchInRegion)
+  const setPunchInRegion = useEngineStore((s) => s.setPunchInRegion)
 
   // ─── WaveSurfer Initialization ──────────────────────────────────────
 
@@ -137,15 +144,25 @@ export function WaveformPanel({
 
     wsRef.current = ws
 
-    // Intercept WaveSurfer's seeking event - when the user clicks on the waveform,
-    // WaveSurfer emits a 'seeking' event with the currentTime in seconds.
-    // We route this directly through our AudioEngine's seek method.
+    // Register the Regions plugin for visual punch-in region display.
+    // We use addRegion() to show the selected region — the region boundaries
+    // are set via "Mark Start" / "Mark End" buttons in RecordingPanel, not drag.
+    const regions = ws.registerPlugin(RegionsPlugin.create())
+    regionsRef.current = regions
+
+    // When the user resizes a region edge, sync the updated bounds to the store.
+    regions.on('region-updated', (region) => {
+      setPunchInRegion({ startTime: region.start, endTime: region.end })
+    })
+
+    // Click-to-seek: user clicks on the waveform to position the cursor.
+    // This sets the AudioEngine's playback offset, and in punch-in mode,
+    // the cursor position is used when "Mark Start" / "Mark End" is clicked.
     ws.on('seeking', (currentTime: number) => {
       seek(currentTime)
     })
 
-    // Also handle the 'interaction' event for drag-seeking (user drags across waveform).
-    // This emits the newTime in seconds as the user drags.
+    // Drag-to-seek: user drags across waveform to scrub through audio.
     ws.on('interaction', (newTime: number) => {
       seek(newTime)
     })
@@ -153,10 +170,35 @@ export function WaveformPanel({
     return () => {
       ws.destroy()
       wsRef.current = null
+      regionsRef.current = null
     }
     // getDuration and seek are stable callbacks (useCallback with [getEngine])
     // so this effect only runs once on mount
-  }, [getDuration, seek])
+  }, [getDuration, seek, setPunchInRegion])
+
+  // ─── Punch-In Region Visual Sync ────────────────────────────────────
+
+  // Sync the visual region overlay on the waveform with the store's punchInRegion.
+  // When the store changes (Mark Start/End buttons, or cleared after punch-in),
+  // update the WaveSurfer Regions plugin to match.
+  useEffect(() => {
+    const regions = regionsRef.current
+    if (!regions) return
+
+    // Clear existing visual regions
+    regions.clearRegions()
+
+    // If a region is defined in the store, render it on the waveform
+    if (punchInRegion) {
+      regions.addRegion({
+        start: punchInRegion.startTime,
+        end: punchInRegion.endTime,
+        color: 'rgba(255, 152, 0, 0.25)',  // semi-transparent orange
+        drag: false,                         // use Mark Start/End to reposition
+        resize: true,                        // allow fine-tuning edges by dragging handles
+      })
+    }
+  }, [punchInRegion])
 
   // ─── Load Waveform When Buffer Changes ──────────────────────────────
 
@@ -188,28 +230,36 @@ export function WaveformPanel({
   useEffect(() => {
     // Only run the animation loop when audio is playing.
     // This saves CPU when idle - no unnecessary frame updates.
-    if (!isPlaying) {
-      // Reset level meter when not playing
+    // Run the animation loop when either playing audio OR monitoring mic input,
+    // so the level meter responds to voice during live mic monitoring.
+    const shouldAnimate = isPlaying || micActive
+    if (!shouldAnimate) {
+      // Reset level meter when nothing is active
       setLevel(0)
       setIsClipping(false)
       return
     }
 
     const animate = () => {
-      const ws = wsRef.current
-      if (ws) {
-        // Sync WaveSurfer's visual playhead with AudioEngine's current position.
-        // getCurrentTime() reads from the AudioContext clock, so it's sample-accurate.
-        const currentTime = getCurrentTime()
-        const duration = getDuration()
-        if (duration > 0) {
-          // setTime() moves WaveSurfer's cursor/progress without triggering playback
-          const progress = currentTime / duration
-          ws.seekTo(Math.min(progress, 1))
+      // Only sync waveform playhead during file playback (not mic monitoring)
+      if (isPlaying) {
+        const ws = wsRef.current
+        if (ws) {
+          // Sync WaveSurfer's visual playhead with AudioEngine's current position.
+          // getCurrentTime() reads from the AudioContext clock, so it's sample-accurate.
+          const currentTime = getCurrentTime()
+          const duration = getDuration()
+          if (duration > 0) {
+            // setTime() moves WaveSurfer's cursor/progress without triggering playback
+            const progress = currentTime / duration
+            ws.seekTo(Math.min(progress, 1))
+          }
         }
       }
 
-      // Update level meter from AnalyserNode
+      // Update level meter from AnalyserNode — works for both file playback and mic input.
+      // The AnalyserNode sits after the effects chain, so it reads the post-effects signal
+      // regardless of whether the source is a file or mic.
       const currentLevel = getOutputLevel()
       setLevel(currentLevel)
       setIsClipping(currentLevel >= 1.0)
@@ -233,7 +283,7 @@ export function WaveformPanel({
     return () => {
       cancelAnimationFrame(animFrameRef.current)
     }
-  }, [isPlaying, getCurrentTime, getDuration, getOutputLevel])
+  }, [isPlaying, micActive, getCurrentTime, getDuration, getOutputLevel])
 
   // ─── Render ─────────────────────────────────────────────────────────
 

@@ -19,15 +19,14 @@
 /**
  * VoxSmith - App Shell
  *
- * Sprint 6: Adds ExportPanel sidebar for audio export controls.
- * Layout: TopBar + (optional PresetPanel) + main area + (optional ExportPanel).
+ * Sprint 7: Adds RecordingPanel for mic input, recording, and take management.
+ * Layout: TopBar + (optional RecordingPanel) + (optional PresetPanel) + main area + (optional ExportPanel).
  *
  * All panels share the same AudioEngine instance via useAudioEngine().
  * The hook is called here in App so that both children access the same
  * engine. Props are passed down rather than calling the hook in each child.
  *
  * Future sprints will add:
- * - Sprint 7: Recording controls
  * - Sprint 8: Settings panel (toggle in hamburger menu)
  */
 
@@ -36,6 +35,7 @@ import { ControlPanel } from './components/panels/ControlPanel'
 import { WaveformPanel } from './components/panels/WaveformPanel'
 import { PresetPanel } from './components/panels/PresetPanel'
 import { ExportPanel } from './components/panels/ExportPanel'
+import { RecordingPanel } from './components/panels/RecordingPanel'
 import { useAudioEngine } from './hooks/useAudioEngine'
 import { usePresets } from './hooks/usePresets'
 import { useExport } from './hooks/useExport'
@@ -62,6 +62,7 @@ function App(): React.ReactElement {
   // The hamburger menu toggles them.
   const [showPresets, setShowPresets] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showRecording, setShowRecording] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -85,6 +86,11 @@ function App(): React.ReactElement {
 
   const toggleExport = useCallback(() => {
     setShowExport((prev) => !prev)
+    setMenuOpen(false)
+  }, [])
+
+  const toggleRecording = useCallback(() => {
+    setShowRecording((prev) => !prev)
     setMenuOpen(false)
   }, [])
 
@@ -165,6 +171,24 @@ function App(): React.ReactElement {
                 {showPresets ? 'Hide Presets' : 'Show Presets'}
               </button>
               <button
+                onClick={toggleRecording}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: '#ccc',
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                {showRecording ? 'Hide Recording' : 'Show Recording'}
+              </button>
+              <button
                 onClick={toggleExport}
                 style={{
                   display: 'block',
@@ -190,6 +214,11 @@ function App(): React.ReactElement {
 
       {/* ── Main Layout ─────────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* Left sidebar: recording controls (hidden by default) */}
+        {showRecording && (
+          <RecordingPanel onClose={toggleRecording} />
+        )}
+
         {/* Left sidebar: preset library (hidden by default) */}
         {showPresets && (
           <PresetPanel
