@@ -192,8 +192,16 @@ export function deletePreset(presetId: string, logger: Logger): void {
 
   // Delete portrait file if one is associated
   if (preset.portraitPath) {
-    const fullPortraitPath = path.join(getProjectRoot(), preset.portraitPath)
-    if (fs.existsSync(fullPortraitPath)) {
+    const fullPortraitPath = path.resolve(getProjectRoot(), preset.portraitPath)
+    const portraitsDir = path.resolve(getPortraitsDir())
+
+    // SECURITY (S2): Validate the resolved portrait path stays within the
+    // portraits directory. A corrupted presets.json with portraitPath like
+    // "../../important-file.txt" could otherwise delete arbitrary files.
+    if (!fullPortraitPath.startsWith(portraitsDir)) {
+      logger.error(`Portrait path escape attempt blocked: ${preset.portraitPath}`)
+      // Do NOT delete — path is outside portraits dir. Continue with preset deletion.
+    } else if (fs.existsSync(fullPortraitPath)) {
       try {
         fs.unlinkSync(fullPortraitPath)
         logger.debug(`Deleted portrait file: ${fullPortraitPath}`)
@@ -228,8 +236,16 @@ export function savePortrait(sourcePath: string, presetId: string, logger: Logge
     fs.mkdirSync(portraitsDir, { recursive: true })
   }
 
-  // Use preset ID + original extension for the filename
+  // SECURITY (S6): Whitelist image extensions to prevent non-image files
+  // (e.g. .exe, .dll) from being copied into the portraits directory.
+  const ALLOWED_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
   const ext = path.extname(sourcePath).toLowerCase() || '.png'
+  if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+    logger.warn(`Rejected portrait with invalid extension: ${ext} (source: ${sourcePath})`)
+    return null
+  }
+
+  // Use preset ID + validated extension for the filename
   const filename = `${presetId}${ext}`
   const destPath = path.join(portraitsDir, filename)
 

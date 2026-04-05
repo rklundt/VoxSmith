@@ -448,6 +448,445 @@ Full file-based and live recording studio in one release. The AudioEngine serves
 
 ---
 
+### Sprint 7.1 - Phase 1+2 Refactor
+
+**Goal:** Harden the codebase before v1.0. Fix security vulnerabilities, eliminate dead code, resolve correctness bugs, improve accessibility, and clean up architectural debt accumulated across Sprints 0-7. Changes are scoped to avoid conflicts with Sprint 7.2 (RNNoise AudioWorklet) and Sprint 8 (error messaging UI, settings panel, packaging).
+
+**Background:**
+A senior-level code review of the full codebase identified 27 actionable items across security, correctness, dead code, architecture, and accessibility. One item (waveform load error display) is deferred to Sprint 8 where user-facing error messaging is delivered holistically.
+
+---
+
+#### Security (S1-S8)
+
+These are must-fix items before v1.0 ships.
+
+**S1 — CRITICAL — Path traversal in portrait protocol handler**
+- **File:** `src/main/index.ts` lines 175-184
+- **Problem:** The custom `portrait://` protocol handler builds a file path from `url.hostname + url.pathname` without sanitization. A malicious `portraitPath` stored in `presets.json` (e.g. `../../etc/hosts` or `../../Windows/System32/config/SAM`) could serve any file on the system.
+- **Current code:**
+  ```typescript
+  const filename = url.hostname + url.pathname
+  const filePath = path.join(portraitsDir, filename)
+  return net.fetch(`file://${filePath}`)
+  ```
+- **Fix:** Strip path components using `path.basename()`, then verify the resolved path stays within `portraitsDir`:
+  ```typescript
+  const safeFilename = path.basename(url.hostname + url.pathname)
+  const filePath = path.resolve(portraitsDir, safeFilename)
+  // Verify the resolved path is actually inside portraitsDir
+  if (!filePath.startsWith(path.resolve(portraitsDir))) {
+    logger.error(`Portrait protocol: path escape attempt blocked: ${request.url}`)
+    return new Response('Forbidden', { status: 403 })
+  }
+  return net.fetch(`file://${filePath}`)
+  ```
+- **Test:** Request `portrait://../../etc/hosts` → should return 403, not file contents.
+
+**S2 — CRITICAL — Path traversal in deletePreset portrait deletion**
+- **File:** `src/main/fileSystem/presets.ts` lines 194-205
+- **Problem:** `deletePreset` joins `getProjectRoot()` with `preset.portraitPath` and calls `fs.unlinkSync()`. If presets.json is hand-edited or corrupted to contain `portraitPath: "../../important-file.txt"`, it deletes that file.
+- **Current code:**
+  ```typescript
+  const fullPortraitPath = path.join(getProjectRoot(), preset.portraitPath)
+  fs.unlinkSync(fullPortraitPath)
+  ```
+- **Fix:** Resolve both paths and verify containment:
+  ```typescript
+  const fullPortraitPath = path.resolve(getProjectRoot(), preset.portraitPath)
+  const portraitsDir = path.resolve(getPortraitsDir())
+  if (!fullPortraitPath.startsWith(portraitsDir)) {
+    logger.error(`Portrait path escape attempt blocked: ${preset.portraitPath}`)
+    return  // Do NOT delete — path is outside portraits dir
+  }
+  fs.unlinkSync(fullPortraitPath)
+  ```
+- **Test:** Edit `presets.json` to set `portraitPath: "../../outside.txt"`, create that file, delete the preset → file must NOT be deleted, error logged.
+
+**S3 — CRITICAL — No input validation on preset IPC handlers**
+- **File:** `src/main/ipc/index.ts` lines 98-135
+- **Problem:** PRESET_SAVE, PRESET_DELETE, and PRESET_SAVE_PORTRAIT handlers do not validate their arguments. Null, undefined, or malformed objects pass through unchecked.
+- **Fix:** Add validation at the top of each handler:
+  ```typescript
+  // PRESET_SAVE
+  if (!preset || typeof preset !== 'object' || !preset.id || !preset.name) {
+    throw new Error('Invalid preset: must have id and name')
+  }
+  // PRESET_DELETE
+  if (!presetId || typeof presetId !== 'string') {
+    throw new Error('Invalid presetId: must be a non-empty string')
+  }
+  // PRESET_SAVE_PORTRAIT
+  if (!args || !args.sourcePath || !args.presetId) {
+    throw new Error('Invalid portrait args: must have sourcePath and presetId')
+  }
+  ```
+- **Test:** Call each IPC channel with null/undefined/empty → should throw, not crash.
+
+**S4 — CRITICAL — No validation of export output path**
+- **File:** `src/main/ffmpeg/exportWav.ts` lines 178-246
+- **Problem:** `exportWav` writes to `request.outputPath` without checking if it's within an allowed directory. Could write to system directories.
+- **Fix:** Validate output path resolves to user home, documents, or desktop:
+  ```typescript
+  import { app } from 'electron'
+  const outputPath = path.resolve(request.outputPath)
+  const allowedRoots = [
+    path.resolve(app.getPath('home')),
+    path.resolve(app.getPath('documents')),
+    path.resolve(app.getPath('desktop')),
+    path.resolve(app.getPath('downloads')),
+  ]
+  if (!allowedRoots.some(root => outputPath.startsWith(root))) {
+    return { success: false, error: 'Output path must be within your home directory', outputPath: '' }
+  }
+  ```
+- **Note:** The save dialog already constrains path selection, but this is defense-in-depth against a compromised renderer.
+- **Test:** Manually invoke EXPORT_WAV IPC with `outputPath: 'C:\\Windows\\System32\\test.wav'` → rejected with error.
+
+**S5 — HIGH — No validation of AudioProcessRequest**
+- **File:** `src/main/ipc/index.ts` lines 187-202 (AUDIO_PROCESS handler)
+- **Problem:** The handler passes the request directly to `processAudio()` without validating sampleRate, channels, or audioData. Invalid values could crash the Rubber Band binary or hang the main process.
+- **Fix:** Add range checks before calling `processAudio`:
+  ```typescript
+  if (!request.audioData || request.audioData.byteLength === 0) {
+    return { success: false, error: 'No audio data provided' }
+  }
+  if (request.sampleRate < 8000 || request.sampleRate > 192000) {
+    return { success: false, error: `Invalid sample rate: ${request.sampleRate}` }
+  }
+  if (request.channels < 1 || request.channels > 2) {
+    return { success: false, error: `Invalid channel count: ${request.channels}` }
+  }
+  ```
+- **Test:** Call AUDIO_PROCESS with `sampleRate: 0` → returns error, does not spawn Rubber Band.
+
+**S6 — HIGH — Portrait extension not whitelisted**
+- **File:** `src/main/fileSystem/presets.ts` lines 223-246 (`savePortrait`)
+- **Problem:** `path.extname(sourcePath)` is accepted without checking if it's an image extension. A user could accidentally select a `.exe` or `.dll` file as a portrait and it would be copied and served.
+- **Fix:** Whitelist allowed extensions:
+  ```typescript
+  const ALLOWED_IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
+  const ext = path.extname(sourcePath).toLowerCase() || '.png'
+  if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+    logger.warn(`Rejected portrait with invalid extension: ${ext}`)
+    return null
+  }
+  ```
+- **Test:** Attempt to save a portrait from a `.exe` file → returns null, warning logged.
+
+**S7 — MEDIUM — TAKE_SAVE has no file size limit**
+- **File:** `src/main/ipc/index.ts` — TAKE_SAVE handler (around lines 283-302)
+- **Problem:** Writes `request.audioData` to disk with no size limit. A corrupted or malicious renderer could exhaust disk space.
+- **Fix:** Check size before writing:
+  ```typescript
+  const MAX_TAKE_SIZE_BYTES = 500 * 1024 * 1024  // 500 MB
+  if (request.audioData.byteLength > MAX_TAKE_SIZE_BYTES) {
+    throw new Error(`Take too large: ${(request.audioData.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 500 MB limit`)
+  }
+  ```
+
+**S8 — MEDIUM — TAKE_LIST uses synchronous file I/O in IPC handler**
+- **File:** `src/main/ipc/index.ts` — TAKE_LIST handler (around lines 343-370)
+- **Problem:** `readdirSync` + `statSync` in an IPC handler blocks the main process. If `userData/takes/` has many files or the filesystem hangs, the entire app freezes.
+- **Fix:** Switch to async variants (`fs.promises.readdir`, `fs.promises.stat`) and limit results to 1000 files:
+  ```typescript
+  const files = (await fs.promises.readdir(takesDir)).filter(...).slice(0, 1000)
+  for (const filename of files) {
+    const stat = await fs.promises.stat(filePath)
+    // ...
+  }
+  ```
+
+---
+
+#### Bugs / Correctness (B1-B5)
+
+**B1 — CRITICAL — Missing `await` on `ctx.resume()`**
+- **File:** `src/renderer/engine/AudioEngine.ts` line 305
+- **Problem:** The `play()` method calls `this.ctx.resume()` without `await`. Every other `resume()` call in the file (lines 216, 234, 700) correctly uses `await`. This creates an unhandled promise rejection if the context is suspended when `play()` is called.
+- **Current code:**
+  ```typescript
+  if (this.ctx.state === 'suspended') {
+    this.ctx.resume()  // ← Missing await
+  }
+  ```
+- **Fix:** Make `play()` async and await the resume:
+  ```typescript
+  async play(onEnd?: () => void): Promise<void> {
+    // ...
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume()
+    }
+  ```
+- **Ripple effect:** Callers of `play()` (in `useAudioEngine` hook) need to handle the returned promise. The `play` callback in `useAudioEngine` should `await engine.play(...)` or use `.catch()`.
+- **Test:** Call `play()` after creating AudioContext (suspended by autoplay policy) → no unhandled promise rejection in console.
+
+**B2 — MEDIUM — Stale closure in `startCountIn`**
+- **File:** `src/renderer/hooks/useRecording.ts` lines 169-191
+- **Problem:** `startCountIn` uses `useCallback(fn, [])` (empty deps), but the inner `tick()` function calls `startRecordingImmediate()` which is defined later (line 199) via `useCallback`. The eslint-disable comment on line 190 suppresses the missing-dependency warning. Because the dep array is empty, `startCountIn` captures the *initial* reference to `startRecordingImmediate`. If `startRecordingImmediate` is ever recreated (its deps change), `startCountIn` calls the stale version.
+- **Why it works today:** `startRecordingImmediate` depends on `[getEngine]` which is stable (singleton pattern). So the stale closure doesn't fire... yet.
+- **Fix:** Either add `startRecordingImmediate` to the dependency array, or use `useRef` to hold a stable reference:
+  ```typescript
+  const startRecordingRef = useRef(startRecordingImmediate)
+  useEffect(() => { startRecordingRef.current = startRecordingImmediate }, [startRecordingImmediate])
+  // In startCountIn:
+  void startRecordingRef.current()
+  ```
+- **Test:** Count-in → recording starts → rapidly stop and re-count-in → second recording works correctly.
+
+**B3 — MEDIUM — Race condition in punchIn**
+- **File:** `src/renderer/hooks/useRecording.ts` lines 370-438
+- **Problem:** `punchIn` uses a `setTimeout` to auto-stop after the punch region duration (line 392-436). If the user triggers punchIn again before the first timeout fires, both timeouts will fire and both will try to `stopRecording()` and `splicePunchIn()` independently, potentially double-splicing or corrupting the take buffer.
+- **Fix:** Track the punch-in timeout in a ref and cancel it on re-entry:
+  ```typescript
+  const punchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const punchIn = useCallback(async (region: PunchInRegion) => {
+    // Cancel any in-flight punch
+    if (punchTimeoutRef.current) {
+      clearTimeout(punchTimeoutRef.current)
+      punchTimeoutRef.current = null
+      engine.stopRecording()  // Discard the aborted punch audio
+      store.getState().setRecordingState('idle')
+    }
+    // ... rest of punchIn logic ...
+    punchTimeoutRef.current = setTimeout(() => {
+      punchTimeoutRef.current = null
+      // ... splice and cleanup ...
+    }, punchDurationMs)
+  }, [getEngine, loadFile])
+  ```
+- **Also:** Clean up `punchTimeoutRef` in the useEffect cleanup function (line 442+).
+- **Test:** Mark a region, press P, immediately press P again → no double-splice, no crash, first punch discarded.
+
+**B4 — MEDIUM — Missing try/catch in auditionTake**
+- **File:** `src/renderer/hooks/useRecording.ts` line 343
+- **Problem:** `audioBufferToWav(buffer)` can throw if the buffer is invalid (e.g. zero-length or missing channel data). The call is not wrapped in try/catch.
+- **Fix:** Wrap the audition path:
+  ```typescript
+  try {
+    const wavBytes = audioBufferToWav(buffer)
+    await loadFile(wavBytes)
+  } catch (err) {
+    console.error('Failed to audition take:', err)
+    store.getState().setMicError('Failed to load take for audition')
+    return
+  }
+  ```
+- **Test:** Corrupt a take buffer (zero-length), try to audition → error shown, no crash.
+
+**B5 — LOW — Unvalidated cast from worklet message**
+- **File:** `src/renderer/engine/AudioEngine.ts` line 726
+- **Problem:** `event.data.data as Float32Array` is a trust-based cast. If the worklet processor sends malformed data, this passes silently and could corrupt the recording buffer.
+- **Current code:**
+  ```typescript
+  this.recordingBuffer.addChunk(event.data.data as Float32Array)
+  ```
+- **Fix:** Add runtime check:
+  ```typescript
+  const chunk = event.data.data
+  if (chunk instanceof Float32Array) {
+    this.recordingBuffer.addChunk(chunk)
+  }
+  ```
+
+---
+
+#### Dead Code / Cleanup (D1-D5)
+
+**D1 — SpikeTestUI.tsx still in codebase**
+- **File:** `src/renderer/components/SpikeTestUI.tsx`
+- **Problem:** Entire file is the Sprint 1 WASM spike. Comments at the top say "SPIKE COMPLETE - will be removed in Sprint 2." It was never removed. ~200 lines of dead code.
+- **Fix:** Delete the file. Remove any imports/references to it from `App.tsx` or routes.
+- **Verify:** `pnpm typecheck` passes after deletion — no other file imports SpikeTestUI.
+
+**D2 — Unused `labelStyle` in ExportPanel**
+- **File:** `src/renderer/components/panels/ExportPanel.tsx` around lines 273-278
+- **Problem:** `labelStyle` variable is defined but never used (superseded by `labelWithHelpStyle`).
+- **Fix:** Delete the variable.
+
+**D3 — Stub DIALOG_OPEN_WAV handler**
+- **File:** `src/main/ipc/index.ts` around lines 211-214
+- **Problem:** Handler for `IPC.DIALOG_OPEN_WAV` is a stub that returns null. It was likely intended for a "File > Open" menu item. Either implement it for Sprint 8 or add a clear comment marking it as Sprint 8 work.
+- **Fix:** Add comment: `// TODO Sprint 8: Implement File > Open dialog — currently files are loaded via drag-and-drop only`
+
+**D4 — Outdated ScriptProcessorNode reference in MicInput docs**
+- **File:** `src/renderer/engine/MicInput.ts` lines 34-37
+- **Problem:** Module-level JSDoc still says "Recording uses a ScriptProcessorNode" but the actual implementation uses `AudioWorkletNode` with `recorder-processor.js`.
+- **Fix:** Update the comment to reference `AudioWorkletNode` and the persistent parallel tap architecture (see AudioEngine.ts lines 715-737).
+
+**D5 — Unused sessionStore stub**
+- **File:** `src/renderer/stores/sessionStore.ts`
+- **Problem:** Entire store is a Sprint 0 placeholder with a single `isRecording: false` field. No component or hook imports it.
+- **Fix:** Add a comment header marking it as Sprint 8 placeholder for session recovery state, OR delete it if Sprint 8 won't use it. Check if any file imports from this store first.
+
+---
+
+#### Architecture / Code Quality (A1-A8)
+
+**A1 — Extract PresetItem from PresetPanel**
+- **File:** `src/renderer/components/panels/PresetPanel.tsx` lines 282-612
+- **Problem:** `renderPresetItem` is a 330-line inline function inside the component. It handles edit mode, portrait display, emotion sub-presets, notes, and action buttons all inline. This makes PresetPanel ~1000 lines and difficult to maintain.
+- **Fix:** Extract `renderPresetItem` into a new `<PresetItem />` component in `src/renderer/components/panels/PresetItem.tsx`. Wrap it in `React.memo` with a comparison function that checks `preset.id`, `preset.updatedAt`, `isActive`, and `isEditing`. Pass callback props for actions (edit, delete, portrait, etc.).
+- **License header required** on the new file per CLAUDE.md.
+- **Test:** Open preset panel with presets → renders correctly, all actions (edit, delete, portrait, A/B, expand/collapse) still work.
+
+**A2 — Standardize IPC error handling pattern**
+- **File:** `src/main/ipc/index.ts` — all handlers
+- **Problem:** Inconsistent patterns:
+  - PRESET_SAVE: catches and re-throws ✓
+  - PRESET_DELETE: catches and re-throws ✓
+  - PRESET_SAVE_PORTRAIT: catches and returns `null` ✗ (error is swallowed — renderer can't distinguish "no portrait" from "save failed")
+  - EXPORT_WAV: catches and re-throws ✓
+  - Some handlers have `try/catch`, some don't
+- **Fix:** Standardize all handlers to: (1) validate inputs, (2) try the operation, (3) on error: log and re-throw. Never return null on error. Renderer callers should catch the thrown error and display it (Sprint 8 adds the display layer).
+- **Specific fix for PRESET_SAVE_PORTRAIT (line 133):**
+  ```typescript
+  // BEFORE: return null  (swallows error)
+  // AFTER:  throw new Error(errorMsg)  (propagates to renderer)
+  ```
+- **Sprint 8 dependency:** Sprint 8 builds a consistent error toast/banner system. That system relies on IPC handlers throwing errors with message strings, not returning null. This standardization must happen first.
+
+**A3 — Replace Set with Array in presetStore**
+- **File:** `src/renderer/stores/presetStore.ts` line 128
+- **Problem:** `collapsedCategories: new Set<string>()` is not JSON-serializable. If we ever persist UI state (Sprint 8 settings or future enhancement), this would need custom serialization.
+- **Fix:** Change to `collapsedCategories: string[]` and update `toggleCategory` to use array add/filter instead of Set add/delete:
+  ```typescript
+  // State
+  collapsedCategories: [] as string[],
+  // Action
+  toggleCategory: (cat) => {
+    const current = get().collapsedCategories
+    const next = current.includes(cat)
+      ? current.filter(c => c !== cat)
+      : [...current, cat]
+    set({ collapsedCategories: next })
+  }
+  ```
+- **Update type interface** to match: `collapsedCategories: string[]`
+- **Update consumers:** Any component that calls `.has()` on the Set needs to use `.includes()` instead.
+
+**A4 — Fix Float32Array generic**
+- **File:** `src/renderer/engine/AudioEngine.ts` line 168
+- **Problem:** `Float32Array<ArrayBuffer>` is a non-standard TypeScript generic annotation. It was added to avoid `ArrayBufferLike` mismatch with strict mode. This annotation is confusing and may break in future TS versions.
+- **Fix:** Use a standard allocation and cast:
+  ```typescript
+  private analyserData: Float32Array
+  // In constructor:
+  this.analyserData = new Float32Array(this.analyser.fftSize)
+  ```
+  If TS strict mode complains about `getFloatTimeDomainData`, use:
+  ```typescript
+  this.analyser.getFloatTimeDomainData(this.analyserData as Float32Array)
+  ```
+- **Also check:** `src/renderer/engine/MicInput.ts` line 210 — same pattern may exist there.
+
+**A5 — Document preload IPC constant duplication**
+- **File:** `src/preload/index.ts` lines 42-60
+- **Problem:** IPC channel names are hardcoded in the preload script, duplicated from `src/shared/constants.ts`. There's a TODO comment acknowledging this. Electron-vite's preload build may not resolve shared imports.
+- **Fix:** Try importing from `../../shared/constants` in the preload. If electron-vite's preload target supports it (it may — newer versions resolve cross-target imports), use the import and delete the duplicate. If it fails, add a clear comment explaining the limitation and referencing the canonical source in `constants.ts`.
+
+**A6 — Extract effect names constant**
+- **File:** `src/renderer/components/panels/ControlPanel.tsx` around lines 793-806
+- **Problem:** Effect names `['vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb']` are hardcoded in JSX. If a new effect is added, this list must be updated manually.
+- **Fix:** Define the list in `src/shared/constants.ts` as `EFFECT_NAMES` and import it. Or derive it from the `EngineSnapshot` type's effect-related keys.
+
+**A7 — Add platform check for FFmpeg binary path**
+- **File:** `src/main/ffmpeg/binaryPath.ts` around lines 39-68
+- **Problem:** Binary name is hardcoded as `ffmpeg.exe`. On Linux/macOS (stretch goals per CLAUDE.md), it would be `ffmpeg` with no extension.
+- **Fix:**
+  ```typescript
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  const binaryName = `ffmpeg${ext}`
+  ```
+- **Apply same fix** to Rubber Band CLI binary path if it has the same pattern (check `src/main/rubberband/` for `.exe` hardcoding).
+
+**A8 — Replace inline style mutations with CSS**
+- **File:** `src/renderer/App.tsx` around lines 168-205
+- **Problem:** Menu items use `onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}` to apply hover styles. This bypasses React's render cycle and could leak state on unmount.
+- **Fix:** Define CSS classes with `:hover` pseudo-class in the component's styles or a CSS module. Remove the `onMouseEnter`/`onMouseLeave` handlers.
+
+---
+
+#### Accessibility (X1-X3)
+
+**X1 — Add ARIA attributes to interactive components**
+- **Files:** All files in `src/renderer/components/`
+- **Problem:** No `aria-label`, `aria-describedby`, or `role` attributes anywhere. Screen readers cannot interpret controls.
+- **Fix (scope for 7.1):** Focus on the most impactful additions:
+  - All `<input type="range">` sliders: add `aria-label` with the control name (from tooltips.ts label field)
+  - Toggle buttons (bypass, mic mute, count-in): add `aria-pressed` boolean state
+  - Panels: add `role="region"` and `aria-label` (e.g. "Control Panel", "Preset Panel")
+  - Record/Stop button: add `aria-label` that changes with state ("Start recording" / "Stop recording")
+- **Do NOT:** Add ARIA to the noise suppression toggle (Sprint 7.2 re-adds this UI element).
+
+**X2 — Convert clickable spans to buttons in PresetPanel**
+- **File:** `src/renderer/components/panels/PresetPanel.tsx`
+- **Problem:** Several interactive elements are `<span onClick={...}>` — these are not keyboard-focusable and invisible to screen readers.
+- **Fix:** Replace with `<button>` elements styled to match (reset button styles: `border: none, background: none, cursor: pointer`). If extracted to `<PresetItem />` (A1), do this as part of the extraction.
+
+**X3 — Make HelpTooltip accessible**
+- **File:** `src/renderer/components/controls/HelpTooltip.tsx` lines 101-114
+- **Problem:** The "?" circle is a `<span>` with mouse handlers. Not keyboard-focusable.
+- **Fix:** Change to `<button type="button" aria-label="Help" role="button">` with the same styling. Add `onKeyDown` handler for Enter/Space to toggle the tooltip.
+
+---
+
+**Excluded from 7.1 (conflict with future sprints):**
+
+| Item | Reason | Deferred To |
+|------|--------|-------------|
+| AudioEngine mic signal chain restructuring | Sprint 7.2 inserts RNNoise node between volumeGain and effects chain | 7.2 |
+| RecordingPanel noise suppression toggle UI | Sprint 7.2 re-adds the toggle button at lines 79-80 | 7.2 |
+| Waveform load error display to user (B6) | Sprint 8 standardizes all user-facing error messaging with toast/banner component | 8 |
+| electron-builder config changes | Sprint 8 finalizes NSIS packaging config | 8 |
+| Settings merge logic in main process | Sprint 8 owns the settings UI and merge behavior | 8 |
+
+---
+
+**User Stories:**
+- As a developer, all IPC handlers validate inputs so that a compromised renderer cannot perform path traversal, write to arbitrary paths, or crash the main process
+- As a developer, portrait file operations are sandboxed to the portraits directory so that malicious preset data cannot delete or serve files outside the expected scope
+- As a developer, dead code from completed spikes and unused stubs is removed so that the codebase is clean and navigable
+- As a developer, React hook dependency arrays are correct so that stale closures and race conditions do not cause intermittent bugs
+- As a developer, IPC error handling follows a consistent pattern (throw on failure) so that Sprint 8 can layer user-facing messages on top without guessing the error shape
+- As a user, interactive UI elements are semantically correct (`<button>` not `<span>`) and have ARIA labels so that the app is navigable by keyboard and screen reader
+
+**Acceptance Criteria:**
+- All CRITICAL and HIGH security items (S1-S6) resolved
+- All CRITICAL correctness bugs (B1) resolved
+- No dead code from completed spikes remains in the codebase
+- IPC handlers follow consistent error pattern (throw on invalid input)
+- `pnpm typecheck` passes
+- No new `error` or `warn` entries in session log during QA run
+- Existing Sprint 0-7 QA regression items still pass (no behavioral changes)
+
+**QA Checklist:**
+- [ ] S1: Portrait protocol handler — request `portrait://../../etc/hosts` — returns error, does not serve file
+- [ ] S2: Manually edit `presets.json` with `portraitPath: "../../outside.txt"`, delete preset — file outside portraits dir is NOT deleted
+- [ ] S3: IPC PRESET_SAVE with null/undefined — returns error, does not crash
+- [ ] S4: Export with path outside user home — rejected with error
+- [ ] S5: AUDIO_PROCESS with sampleRate=0 — rejected with error, no crash
+- [ ] S6: Save portrait with `.exe` source — rejected or extension normalized
+- [ ] B1: Play audio when context is suspended — no unhandled promise rejection in console
+- [ ] B2: Count-in followed by rapid re-record — no stale callback behavior
+- [ ] B3: Trigger punch-in twice rapidly — first punch cancelled cleanly, no double-splice
+- [ ] B4: Audition a corrupted take buffer — error caught, no crash
+- [ ] D1: `SpikeTestUI.tsx` no longer in the codebase
+- [ ] A1: PresetPanel renders correctly after PresetItem extraction
+- [ ] A2: IPC error from invalid preset save — error propagates to renderer (not swallowed as null)
+- [ ] X1: Tab through all controls — every interactive element is focusable and labelled
+- [ ] Regression: Full Sprint 0-7 QA checklist passes — no behavioral changes
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.1`
+- All Sprint 0-7 regression items re-verified
+- No new features — refactor and hardening only
+
+---
+
 ### Sprint 7.2 - Real-Time Noise Suppression (RNNoise WASM)
 
 **Goal:** Add real-time AI-based noise suppression to the microphone signal chain using RNNoise compiled to WebAssembly, running as an AudioWorklet processor. This replaces the non-functional WebRTC `getUserMedia` noiseSuppression constraint (which Electron/Chromium ignores).
@@ -457,58 +896,243 @@ Sprint 7 attempted noise suppression via the `getUserMedia({ audio: { noiseSuppr
 
 RNNoise is a neural-network-based noise suppression library developed by Mozilla/Xiph.org. It is used by Discord, OBS Studio, and other voice applications. It processes audio frame-by-frame, distinguishing speech from noise using a recurrent neural network. The model is small (~85KB) and runs in real time on any modern CPU.
 
-**Architecture:**
+---
 
+#### Step 1: Source and Bundle the RNNoise WASM Binary
+
+**Goal:** Get the RNNoise WASM binary into `src/assets/rnnoise/` so it's bundled with the app.
+
+**Where to look (in priority order):**
+1. **npm search:** `rnnoise-wasm`, `@nicktomlin/rnnoise-wasm`, `rnnoise`, `@pkvie/rnnoise` — look for packages that ship a `.wasm` file
+2. **GitHub:** Search for "rnnoise wasm" — several community WASM builds exist
+3. **Compile from source:** Clone the RNNoise C source from Xiph.org/Mozilla, compile with Emscripten to produce `.wasm` + `.js` glue
+
+**Critical requirement:** The WASM binary must be loadable **inside an AudioWorklet scope** (not just the main thread). AudioWorklet scope has no `document`, no `fetch`, and limited globals. The glue JS must use `WebAssembly.instantiate()` with an ArrayBuffer, not fetch-based loading. Many npm WASM packages assume main-thread loading — test in the worklet scope before committing to a package.
+
+**Testing WASM in worklet scope:** Create a minimal test: register a worklet processor that tries to instantiate the WASM binary. If it throws, the package's loader is incompatible and needs patching or a different source.
+
+**File structure after this step:**
 ```
-Mic → MediaStreamSource → volumeGain → [RNNoise AudioWorklet] → effects chain → speakers
-                              └── recorderNode (parallel tap, captures pre-effects raw audio)
+src/assets/rnnoise/
+  rnnoise.wasm          # The compiled WASM binary (~85-100KB)
+  rnnoise-glue.js       # Optional JS glue for instantiation (may not be needed)
 ```
 
-The RNNoise AudioWorklet sits between the volume gain node and the effects chain input. It processes the mic signal in real time, removing background noise before it reaches the effects chain or recording tap. When disabled, the worklet passes audio through unchanged (bypass mode via message port).
+**Update `scripts/copy-binaries.ts`** to copy `src/assets/rnnoise/` to `src/renderer/public/rnnoise/` during build, same as how FFmpeg binaries are copied. This makes the WASM accessible to the renderer at runtime.
 
-The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the user can re-process with different noise suppression settings later. This matches the existing "dry recording" architecture.
+**Update `electron-builder.config.js`** to include `rnnoise/` in `extraResources` if needed for production builds (same pattern as FFmpeg).
 
-**Key Technical Details:**
+---
 
-1. **RNNoise WASM Binary:** Must be bundled locally in the project directory (e.g., `src/assets/rnnoise/`) so that `pnpm install && pnpm dev` works immediately on a fresh clone. No external downloads at runtime. The binary should be fetched or compiled once and committed to the assets directory (same pattern as FFmpeg and Rubber Band).
+#### Step 2: Create the RNNoise AudioWorklet Processor
 
-2. **AudioWorklet Processor:** A new `rnnoise-processor.js` (or `.ts` compiled) AudioWorklet processor that:
-   - Loads the RNNoise WASM binary in the worklet scope
-   - Processes audio in 480-sample frames (RNNoise's fixed frame size = 10ms at 48kHz)
-   - Handles sample rate mismatch: if AudioContext is 44100Hz, resample to 48kHz internally, process, resample back (RNNoise requires 48kHz)
-   - Supports enable/disable via message port (bypass mode)
-   - Reports VAD (Voice Activity Detection) probability back to main thread via message port (RNNoise outputs this for free — useful for future features like auto-silence-trim)
+**New file:** `src/renderer/public/rnnoise-processor.js`
 
-3. **Frame Buffering:** Web Audio AudioWorklet processes in 128-sample render quanta. RNNoise needs 480-sample frames. The processor must buffer input samples and process in 480-sample chunks, outputting processed audio back in 128-sample blocks. This introduces ~10ms latency (one RNNoise frame).
+This is the worklet processor that runs in the audio rendering thread. It must handle:
 
-4. **Store State (already exists):**
-   - `noiseSuppression: boolean` — toggle in engineStore (preserved from Sprint 7)
-   - `setNoiseSuppression()` — action in engineStore (preserved from Sprint 7)
-   - When toggled, send a message to the AudioWorklet to enable/disable processing
+**Frame size mismatch (critical):**
+- Web Audio AudioWorklet delivers audio in **128-sample render quanta** (the `inputs` array in `process()`)
+- RNNoise requires exactly **480-sample frames** (10ms at 48kHz)
+- The processor must maintain an internal ring buffer:
+  - Accumulate 128-sample blocks until 480 samples are collected
+  - Process the 480-sample frame through RNNoise
+  - Output the processed 480 samples back in 128-sample chunks
+  - This requires a double-buffer: input accumulator + output queue
 
-5. **UI Toggle (re-add to RecordingPanel):**
-   - Re-add the noise suppression toggle button in RecordingPanel.tsx
-   - Reads from `useEngineStore((s) => s.noiseSuppression)`
-   - Tooltip already updated in `tooltips.ts` for RNNoise
+**Sample rate handling:**
+- RNNoise is trained on 48kHz audio. It MUST receive 48kHz input.
+- If `AudioContext.sampleRate` is 44100Hz (common on Windows), the processor must:
+  1. Resample input from 44100 → 48000 before processing
+  2. Resample output from 48000 → 44100 after processing
+  3. Use linear interpolation for resampling (simple and sufficient for voice)
+- If `AudioContext.sampleRate` is already 48000, skip resampling.
+- Read `sampleRate` from `AudioWorkletGlobalScope.sampleRate` in the constructor.
 
-6. **Bundled Binary Strategy:**
-   - Add RNNoise WASM (`.wasm` file + JS glue if needed) to `src/assets/rnnoise/`
-   - Update `scripts/copy-binaries.ts` to include RNNoise in the copy step
-   - WASM binary must be accessible from the renderer's public directory (same pattern as `recorder-processor.js` in `src/renderer/public/`)
-   - The AudioWorklet processor file goes in `src/renderer/public/rnnoise-processor.js`
+**Message port protocol:**
+```javascript
+// Main thread → Processor
+{ type: 'enable' }         // Turn on noise suppression
+{ type: 'disable' }        // Turn off (passthrough)
+{ type: 'load-wasm', wasm: ArrayBuffer }  // Send WASM binary for instantiation
 
-**Sources for RNNoise WASM:**
-- Search npm for `rnnoise-wasm` or `rnnoise` packages with pre-compiled WASM binaries
-- RNNoise upstream C source: Xiph.org / Mozilla (compile with Emscripten if no suitable npm package)
-- Evaluate npm packages first for ease of integration. If none provide a clean WASM binary suitable for AudioWorklet use, compile from the C source using Emscripten.
-- Key requirement: the WASM binary must be loadable inside an AudioWorklet scope (not just main thread)
+// Processor → Main thread
+{ type: 'ready' }          // WASM loaded and ready
+{ type: 'error', message: string }  // WASM load failed
+{ type: 'vad', probability: number }  // Voice Activity Detection (0.0-1.0), sent every ~100ms
+```
+
+**Bypass mode:** When disabled, `process()` copies input directly to output with zero processing overhead. No WASM calls. This is the default state until `enable` message is received.
+
+**WASM loading sequence:**
+1. Main thread reads the `.wasm` file as ArrayBuffer (via fetch or import)
+2. Main thread sends `{ type: 'load-wasm', wasm: arrayBuffer }` to processor via port
+3. Processor calls `WebAssembly.instantiate(wasm, imports)` inside the worklet scope
+4. Processor sends `{ type: 'ready' }` back, or `{ type: 'error' }` on failure
+5. Processor is in bypass mode until both WASM is loaded AND `enable` message is received
+
+**Processor skeleton:**
+```javascript
+class RNNoiseProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super()
+    this._enabled = false
+    this._wasmReady = false
+    this._rnnoiseState = null       // Pointer to RNNoise state in WASM memory
+    this._inputBuffer = new Float32Array(480)
+    this._outputBuffer = new Float32Array(480)
+    this._inputOffset = 0           // How many samples accumulated so far
+    this._outputQueue = []          // Processed 480-sample frames waiting to be drained
+    this._outputReadOffset = 0      // Read position in current output frame
+    this.port.onmessage = (e) => this._handleMessage(e.data)
+  }
+
+  _handleMessage(msg) {
+    if (msg.type === 'load-wasm') { /* instantiate WASM, create RNNoise state */ }
+    if (msg.type === 'enable')  { this._enabled = true }
+    if (msg.type === 'disable') { this._enabled = false }
+  }
+
+  process(inputs, outputs) {
+    const input = inputs[0][0]   // Mono channel 0
+    const output = outputs[0][0]
+    if (!input) return true
+
+    if (!this._enabled || !this._wasmReady) {
+      output.set(input)  // Passthrough
+      return true
+    }
+
+    // Accumulate input into 480-sample buffer, process when full,
+    // drain output queue into 128-sample output blocks
+    // ... (frame buffering logic) ...
+    return true
+  }
+}
+registerProcessor('rnnoise-processor', RNNoiseProcessor)
+```
+
+---
+
+#### Step 3: Integrate into AudioEngine Signal Chain
+
+**File:** `src/renderer/engine/AudioEngine.ts` — modify `startMicInput()`
+
+**Current mic signal chain (from Sprint 7):**
+```
+mic → MediaStreamSource → volumeGain → effects chain input → ... → speakers
+                              └── recorderNode (parallel tap) → keepAlive → destination
+```
+
+**New signal chain with RNNoise:**
+```
+mic → MediaStreamSource → volumeGain ──┬── recorderNode (parallel tap, RAW audio)
+                                        │         └── keepAlive → destination
+                                        └── [RNNoise AudioWorklet] → effects chain input → ... → speakers
+```
+
+**Key design decision:** The recorder tap branches off BEFORE the RNNoise node, from `volumeGain`. This captures raw (un-denoised) audio, so the user can re-process with different settings later. The RNNoise node only affects the monitoring path (what the user hears through speakers) and does NOT affect recorded audio.
+
+**Implementation in `startMicInput()`:**
+
+1. After creating `this.micSourceNode` and connecting to `this.volumeGain` (existing code, ~line 708):
+2. Register the RNNoise worklet module: `await this.ctx.audioWorklet.addModule('/rnnoise-processor.js')`
+3. Create the RNNoise node: `this.rnnoiseNode = new AudioWorkletNode(this.ctx, 'rnnoise-processor', { ... })`
+4. Load WASM: Fetch the `.wasm` file, send ArrayBuffer to processor via port
+5. Wait for `{ type: 'ready' }` response
+6. Rewire the chain:
+   ```typescript
+   // Before (Sprint 7):
+   // this.micSourceNode.connect(this.volumeGain)
+   // this.volumeGain.connect(this.effects.input)  ← this needs to change
+
+   // After (Sprint 7.2):
+   this.micSourceNode.connect(this.volumeGain)
+   this.volumeGain.connect(this.rnnoiseNode)      // volumeGain → RNNoise
+   this.rnnoiseNode.connect(this.effects.input)    // RNNoise → effects chain
+   // Recorder tap stays on volumeGain (raw audio):
+   this.volumeGain.connect(this.recorderNode)      // (unchanged from Sprint 7)
+   ```
+7. Send initial enable/disable based on `engineStore.noiseSuppression` state
+
+**New private fields on AudioEngine:**
+```typescript
+private rnnoiseNode: AudioWorkletNode | null = null
+```
+
+**Cleanup in `stopMicInput()`:** Disconnect and null out `this.rnnoiseNode` alongside existing mic cleanup.
+
+**Store binding:** In the hook that calls `startMicInput` (likely `useRecording.ts`), watch `noiseSuppression` store state and send enable/disable messages to the worklet when it changes:
+```typescript
+useEffect(() => {
+  if (engine.rnnoiseNode) {
+    engine.rnnoiseNode.port.postMessage({
+      type: noiseSuppression ? 'enable' : 'disable'
+    })
+  }
+}, [noiseSuppression])
+```
+
+---
+
+#### Step 4: Re-add UI Toggle to RecordingPanel
+
+**File:** `src/renderer/components/panels/RecordingPanel.tsx` — lines 79-80 (comment placeholder)
+
+**Replace the placeholder comment with:**
+```tsx
+const noiseSuppression = useEngineStore((s) => s.noiseSuppression)
+const setNoiseSuppression = useEngineStore((s) => s.setNoiseSuppression)
+```
+
+**Add toggle button** in the mic controls section (near the monitor mute toggle):
+```tsx
+<button
+  onClick={() => setNoiseSuppression(!noiseSuppression)}
+  aria-pressed={noiseSuppression}
+  aria-label={tooltips.noiseSuppression.label}
+  title={tooltips.noiseSuppression.short}
+>
+  {noiseSuppression ? '🔇 Noise Suppression On' : '🔊 Noise Suppression Off'}
+</button>
+```
+
+**Tooltip** already exists in `src/shared/tooltips.ts` — the `noiseSuppression` entry was updated in Sprint 7 with RNNoise-specific copy and `poweredBy: 'RNNoise WASM (AudioWorklet)'`.
+
+**Store state** already exists in `src/renderer/stores/engineStore.ts`:
+- `noiseSuppression: boolean` (default: `true`) — line ~251
+- `setNoiseSuppression: (enabled: boolean) => void` — line ~320
+
+---
+
+#### Step 5: Error Handling and Graceful Degradation
+
+**If WASM fails to load (file missing, CSP blocks it, instantiation error):**
+1. Processor sends `{ type: 'error', message: '...' }` via port
+2. AudioEngine logs error at `error` level
+3. RNNoise node stays in bypass mode (passthrough) — monitoring works, just without denoising
+4. UI toggle is disabled with a tooltip explaining "Noise suppression unavailable — WASM failed to load"
+5. Store state `noiseSuppression` is set to `false`
+
+**If sample rate is unusual (not 44100 or 48000):**
+- The processor should still work via the resampling path, but log a warning
+- Test with 96000Hz if possible (some pro audio interfaces run at this rate)
+
+---
 
 **What's Already In Place (from Sprint 7):**
-- `engineStore.ts`: `noiseSuppression` state + `setNoiseSuppression` action (lines 119, 195, 251, 320)
-- `tooltips.ts`: `noiseSuppression` entry already updated for RNNoise (label, detail, poweredBy)
-- `MicInput.ts`: `MicStreamOptions` interface with comment noting Sprint 7.2 plan
-- `RecordingPanel.tsx`: Comment placeholder noting where toggle will be re-added (lines 79-80)
-- `AudioEngine.ts`: Mic signal chain architecture with parallel recorder tap
+
+| Item | File | Lines | Status |
+|------|------|-------|--------|
+| Store state: `noiseSuppression: boolean` | `engineStore.ts` | ~119, ~251 | Ready — default `true` |
+| Store action: `setNoiseSuppression()` | `engineStore.ts` | ~195, ~320 | Ready |
+| Tooltip: `noiseSuppression` entry | `tooltips.ts` | ~384-394 | Ready — updated for RNNoise |
+| UI placeholder comment | `RecordingPanel.tsx` | 79-80 | Comment marking where toggle goes |
+| MicStreamOptions comment | `MicInput.ts` | 72-78 | Comment explaining Sprint 7.2 plan |
+| Architecture doc: noise suppression plan | `architecture.md` | Mic Input section | Documented |
+| CLAUDE.md key decision | `CLAUDE.md` | Key Decisions Log | "RNNoise WASM (Sprint 7.2)" entry |
+| getUserMedia constraint set to `false` | `MicInput.ts` | ~104 | Hardcoded false (not relying on WebRTC) |
+
+---
 
 **User Stories:**
 - As a user, I can toggle noise suppression on/off during mic monitoring so that background noise (fan, AC, keyboard, room tone) is removed from my voice signal in real time
@@ -516,6 +1140,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 - As a user, my recorded takes capture raw (pre-noise-suppression) audio so that I can re-process with different settings later
 - As a developer, the RNNoise WASM binary is bundled locally so that `pnpm install && pnpm dev` works on a fresh clone with no external downloads
 - As a developer, the RNNoise AudioWorklet reports VAD probability so that future features (auto-silence-trim, recording auto-stop) can use it
+- As a developer, if RNNoise WASM fails to load, the app degrades gracefully to passthrough mode with the toggle disabled, and an error is logged
 
 **Acceptance Criteria:**
 - Noise suppression audibly removes background noise (fan, AC, room tone) from mic signal
@@ -525,6 +1150,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 - RNNoise WASM loads without CSP violations in Electron
 - Fresh clone: `pnpm install && pnpm dev` — noise suppression works without manual setup
 - VAD probability is available via message port (logged to console for verification)
+- WASM load failure: passthrough mode, toggle disabled, error logged
 
 **QA Checklist:**
 - [ ] Toggle noise suppression ON — background noise (fan/AC) audibly reduced during monitoring
@@ -544,7 +1170,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 - All acceptance criteria met
 - QA checklist passed and results recorded in `testResults/`
 - `package.json` version set to `0.7.2`
-- All Sprint 0-7 regression items re-verified
+- All Sprint 0-7.1 regression items re-verified
 
 ---
 
@@ -552,17 +1178,23 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 
 **Goal:** Ship-ready build. Settings UI, error handling, onboarding, and `.exe` packaging.
 
+**Depends on Sprint 7.1:** IPC handlers now follow a consistent throw-on-error pattern (standardized in Sprint 7.1 item A2). Sprint 8 layers user-facing error messages on top of that pattern. If 7.1 was not completed, IPC error handling is inconsistent and error display will need per-handler special cases.
+
+**Deferred from Sprint 7.1 (pick up here):**
+- **B6 — Waveform load error display:** `WaveformPanel.tsx:218-221` logs waveform load errors to console but does not show the user. Add user-facing error toast/banner as part of the error messaging work in this sprint.
+
 **User Stories:**
 - As a user, I can open a settings panel and change the max log file count without editing JSON directly so that configuration is approachable
 - As a user, I see a clear error message if a WAV file fails to load so that I am not left confused
 - As a user, I see a clear error message if export fails so that I know what went wrong
+- As a user, I see a clear error message if waveform rendering fails so that I know something went wrong *(deferred from Sprint 7.1)*
 - As a user, I can see the app version in the settings or about panel so that I can report it when asking for help
 - As a developer, I can run `pnpm dist` and get a `.exe` NSIS installer so that the app can be installed on a clean Windows machine
 - As a developer, the bundled FFmpeg and Rubber Band WASM binaries resolve correctly in the packaged build so that the app works after installation
 
 **Acceptance Criteria:**
 - Settings panel reads merged settings and writes user changes to `config/userSettingsOverride.json`
-- All expected error states show user-facing messages
+- All expected error states show user-facing messages (including waveform load failures)
 - Packaged `.exe` installs and runs on a clean Windows 11 machine
 - No console errors in packaged build
 - Version number displayed in app matches `package.json`
@@ -572,6 +1204,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 - [ ] Change max log file count in settings — value written to `config/userSettingsOverride.json`
 - [ ] Load invalid WAV file — clear error message shown to user
 - [ ] Trigger export failure — clear error message shown to user
+- [ ] Waveform load failure — clear error message shown to user *(deferred from 7.1 B6)*
 - [ ] Version displayed in settings/about matches `package.json` version
 - [ ] `pnpm dist` produces `.exe` NSIS installer
 - [ ] Install `.exe` on clean Windows 11 — app launches without errors
@@ -586,7 +1219,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 - All acceptance criteria met
 - QA checklist passed and results recorded in `testResults/`
 - `package.json` version set to `1.0.0`
-- Full regression suite (all Sprint 0-7 items) passed on packaged build
+- Full regression suite (all Sprint 0-7.2 items) passed on packaged build
 - Packaged `.exe` tested on clean Windows 11 machine
 
 ---
@@ -594,7 +1227,7 @@ The recorder tap captures audio BEFORE the RNNoise node (raw mic signal), so the
 ## Phase 1+2 Exit Criteria
 
 Phase 1+2 is complete when all of the following are true:
-- All Sprint 0-8 QA checklists pass
+- All Sprint 0-8 QA checklists pass (including 7.1 and 7.2)
 - Full regression suite passes on the packaged `.exe` build
 - At least one real character preset has been created end-to-end (save, load, export)
 - No unresolved `error` level log entries during full QA pass

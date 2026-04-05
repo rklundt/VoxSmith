@@ -37,14 +37,19 @@ import { app } from 'electron'
  * catches this and returns an error result to the renderer.
  */
 export function getFFmpegPath(): string {
+  // A7: Platform-aware binary name — Windows uses .exe, Linux/macOS don't.
+  // Primary target is Windows, but this keeps cross-platform compatibility.
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  const binaryName = `ffmpeg${ext}`
+
   // In production, electron-builder copies extraResources to process.resourcesPath
-  const productionPath = path.join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
+  const productionPath = path.join(process.resourcesPath, 'ffmpeg', binaryName)
 
   // In dev, the binary is in src/assets/ffmpeg/ relative to the compiled output
-  const devPath = path.join(__dirname, '../../src/assets/ffmpeg/ffmpeg.exe')
+  const devPath = path.join(__dirname, '../../src/assets/ffmpeg/', binaryName)
 
   // Also try relative to project root (when running from source via electron-vite)
-  const devAltPath = path.join(app.getAppPath(), 'src/assets/ffmpeg/ffmpeg.exe')
+  const devAltPath = path.join(app.getAppPath(), 'src/assets/ffmpeg/', binaryName)
 
   if (app.isPackaged && fs.existsSync(productionPath)) {
     return productionPath

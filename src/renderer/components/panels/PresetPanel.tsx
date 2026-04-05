@@ -42,6 +42,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { usePresetStore, type ABSlot } from '../../stores/presetStore'
 import { TOOLTIPS } from '../../../shared/tooltips'
 import type { Preset, EngineSnapshot } from '../../../shared/types'
+import { PresetItem } from './PresetItem'
 
 // ─── Props ────────────────────────────────────────────────────────────────
 
@@ -275,341 +276,51 @@ export function PresetPanel(props: PresetPanelProps): React.ReactElement {
   // ─── Render Helpers ─────────────────────────────────────────────────
 
   /**
-   * Renders a single preset item in the list.
-   * Shows name, active indicator, and action buttons.
-   * When expanded, shows notes, emotions, portrait, and edit controls.
+   * A1: Renders a PresetItem component for a single preset.
+   * The extracted PresetItem is wrapped in React.memo — only re-renders
+   * when this specific preset's data or UI state changes.
    */
-  const renderPresetItem = (preset: Preset) => {
-    const isActive = preset.id === activePresetId
-    const isExpanded = preset.id === expandedPresetId
-    const isEditing = preset.id === editingPresetId
-    const isConfirmingDelete = preset.id === confirmDeleteId
-    // Track which A/B slot this preset is in (if any) for visual indicator
-    const isInSlotA = abEnabled && preset.id === abSlotA
-    const isInSlotB = abEnabled && preset.id === abSlotB
-    // Portrait URI is attached as a transient field by the IPC handler
-    const portraitUri = (preset as Preset & { portraitUri?: string }).portraitUri
-
-    return (
-      <div
-        key={preset.id}
-        style={{
-          padding: '6px 8px',
-          marginBottom: '2px',
-          borderRadius: '4px',
-          backgroundColor: isActive ? '#2a4a6b' : 'transparent',
-          border: isActive ? '1px solid #4a8abf' : '1px solid transparent',
-          cursor: 'pointer',
-        }}
-      >
-        {/* ── Preset Header Row ─────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          {/* Portrait thumbnail */}
-          {portraitUri ? (
-            <img
-              src={portraitUri}
-              alt={preset.name}
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '4px',
-                objectFit: 'cover',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '4px',
-                backgroundColor: '#333',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                color: '#666',
-                flexShrink: 0,
-              }}
-            >
-              ?
-            </div>
-          )}
-
-          {/* Preset name - click to load */}
-          {isEditing ? (
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEdit()
-                if (e.key === 'Escape') handleCancelEdit()
-              }}
-              style={{
-                flex: 1,
-                background: '#1a1a2e',
-                border: '1px solid #4a8abf',
-                color: '#e0e0e0',
-                padding: '2px 4px',
-                borderRadius: '2px',
-                fontSize: '13px',
-              }}
-              autoFocus
-            />
-          ) : (
-            <span
-              onClick={() => abEnabled ? handleABPresetClick(preset.id) : onLoad(preset.id)}
-              title={TOOLTIPS.characterPreset.short}
-              style={{
-                flex: 1,
-                fontSize: '13px',
-                color: isActive ? '#fff' : '#ccc',
-                fontWeight: isActive ? 600 : 400,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {preset.name}
-            </span>
-          )}
-
-          {/* A/B slot badge - shows which slot this preset is loaded into */}
-          {isInSlotA && (
-            <span style={{
-              fontSize: '9px',
-              fontWeight: 700,
-              color: '#8c8',
-              backgroundColor: '#1a3a1a',
-              border: '1px solid #4a8a4a',
-              borderRadius: '3px',
-              padding: '0 3px',
-              flexShrink: 0,
-            }}>A</span>
-          )}
-          {isInSlotB && (
-            <span style={{
-              fontSize: '9px',
-              fontWeight: 700,
-              color: '#c88',
-              backgroundColor: '#3a1a1a',
-              border: '1px solid #8a4a4a',
-              borderRadius: '3px',
-              padding: '0 3px',
-              flexShrink: 0,
-            }}>B</span>
-          )}
-
-          {/* Expand/collapse button */}
-          <button
-            onClick={() => handleToggleExpand(preset.id)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#888',
-              cursor: 'pointer',
-              fontSize: '10px',
-              padding: '2px',
-            }}
-            title="Show details"
-          >
-            {isExpanded ? '\u25B2' : '\u25BC'}
-          </button>
-        </div>
-
-        {/* ── Expanded Detail Area ──────────────────────────────── */}
-        {isExpanded && (
-          <div style={{ marginTop: '8px', paddingLeft: '34px', fontSize: '12px' }}>
-            {/* Action buttons row */}
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-              {!isEditing && (
-                <>
-                  <button
-                    onClick={() => handleStartEdit(preset)}
-                    style={smallButtonStyle}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    onClick={() => onSetPortrait(preset.id)}
-                    style={smallButtonStyle}
-                    title="Set character portrait image"
-                  >
-                    Portrait
-                  </button>
-                  {isActive && (
-                    <button
-                      onClick={async () => {
-                        const result = await onOverwrite()
-                        if (result) showFlash(preset.id)
-                      }}
-                      style={smallButtonStyle}
-                      title="Overwrite this preset with current settings"
-                    >
-                      Update
-                    </button>
-                  )}
-                  {!isConfirmingDelete ? (
-                    <button
-                      onClick={() => setConfirmDeleteId(preset.id)}
-                      style={{ ...smallButtonStyle, color: '#f55' }}
-                    >
-                      Delete
-                    </button>
-                  ) : (
-                    <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <span style={{ color: '#f55' }}>Sure?</span>
-                      <button
-                        onClick={() => handleDelete(preset.id)}
-                        style={{ ...smallButtonStyle, color: '#f55', fontWeight: 600 }}
-                      >
-                        Yes
-                      </button>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        style={smallButtonStyle}
-                      >
-                        No
-                      </button>
-                    </span>
-                  )}
-                </>
-              )}
-              {isEditing && (
-                <>
-                  <button onClick={handleSaveEdit} style={smallButtonStyle}>Save</button>
-                  <button onClick={handleCancelEdit} style={smallButtonStyle}>Cancel</button>
-                </>
-              )}
-            </div>
-
-            {/* Flash confirmation after successful update */}
-            {preset.id === flashPresetId && (
-              <div style={{ color: '#5c5', fontSize: '11px', marginBottom: '4px' }}>Saved!</div>
-            )}
-
-            {/* Edit error message */}
-            {isEditing && editError && (
-              <div style={{ color: '#f55', fontSize: '11px', marginBottom: '4px' }}>{editError}</div>
-            )}
-
-            {/* Edit form for category and notes */}
-            {isEditing && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
-                <label style={{ color: '#888', fontSize: '11px' }}>Category</label>
-                <input
-                  type="text"
-                  value={editCategory}
-                  onChange={(e) => setEditCategory(e.target.value)}
-                  placeholder="e.g. Heroes, Villains"
-                  style={inputStyle}
-                />
-                <label style={{ color: '#888', fontSize: '11px' }}>Notes</label>
-                <textarea
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Performance notes..."
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
-              </div>
-            )}
-
-            {/* Notes display (when not editing) */}
-            {!isEditing && preset.notes && (
-              <div style={{ color: '#999', marginBottom: '6px', fontStyle: 'italic' }}>
-                {preset.notes}
-              </div>
-            )}
-
-            {/* Emotion sub-presets */}
-            <div style={{ marginBottom: '6px' }}>
-              <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}
-                   title={TOOLTIPS.emotionSubPreset.short}>
-                Emotions
-              </div>
-              {preset.emotionVariants.length === 0 && (
-                <div style={{ color: '#555', fontSize: '11px' }}>No emotion variants yet</div>
-              )}
-              {preset.emotionVariants.map((variant) => (
-                <div
-                  key={variant.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    marginBottom: '2px',
-                  }}
-                >
-                  <span
-                    onClick={() => onLoadEmotion(preset.id, variant.id)}
-                    style={{
-                      color: '#aad',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                    }}
-                    title={`Load "${variant.emotion}" variant`}
-                  >
-                    {variant.emotion}
-                  </span>
-                  <button
-                    onClick={() => onDeleteEmotion(preset.id, variant.id)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#666',
-                      cursor: 'pointer',
-                      fontSize: '10px',
-                      padding: '0 2px',
-                    }}
-                    title="Delete emotion variant"
-                  >
-                    x
-                  </button>
-                </div>
-              ))}
-
-              {/* Add emotion form */}
-              {emotionPresetId === preset.id ? (
-                <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                  <input
-                    type="text"
-                    value={emotionName}
-                    onChange={(e) => setEmotionName(e.target.value)}
-                    placeholder="e.g. angry, whisper"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleAddEmotion()
-                      if (e.key === 'Escape') { setEmotionPresetId(null); setEmotionName('') }
-                    }}
-                    style={{ ...inputStyle, flex: 1, fontSize: '11px', padding: '2px 4px' }}
-                    autoFocus
-                  />
-                  <button onClick={handleAddEmotion} style={smallButtonStyle}>Add</button>
-                  <button onClick={() => { setEmotionPresetId(null); setEmotionName('') }} style={smallButtonStyle}>Cancel</button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEmotionPresetId(preset.id)}
-                  style={{ ...smallButtonStyle, marginTop: '4px', fontSize: '11px' }}
-                  title={TOOLTIPS.emotionSubPreset.detail}
-                >
-                  + Emotion
-                </button>
-              )}
-            </div>
-
-            {/* Timestamps */}
-            <div style={{ color: '#555', fontSize: '10px' }}>
-              Created: {new Date(preset.createdAt).toLocaleDateString()}
-              {' | '}
-              Updated: {new Date(preset.updatedAt).toLocaleDateString()}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const renderPresetItem = (preset: Preset) => (
+    <PresetItem
+      key={preset.id}
+      preset={preset}
+      isActive={preset.id === activePresetId}
+      isExpanded={preset.id === expandedPresetId}
+      isEditing={preset.id === editingPresetId}
+      isConfirmingDelete={preset.id === confirmDeleteId}
+      isInSlotA={abEnabled && preset.id === abSlotA}
+      isInSlotB={abEnabled && preset.id === abSlotB}
+      abEnabled={abEnabled}
+      isFlashing={preset.id === flashPresetId}
+      isAddingEmotion={emotionPresetId === preset.id}
+      editName={editName}
+      editCategory={editCategory}
+      editNotes={editNotes}
+      editError={editError}
+      emotionName={emotionName}
+      onLoad={onLoad}
+      onABClick={handleABPresetClick}
+      onToggleExpand={handleToggleExpand}
+      onStartEdit={handleStartEdit}
+      onSaveEdit={handleSaveEdit}
+      onCancelEdit={handleCancelEdit}
+      onSetPortrait={onSetPortrait}
+      onOverwrite={onOverwrite}
+      onDelete={handleDelete}
+      onConfirmDelete={setConfirmDeleteId}
+      onCancelDelete={() => setConfirmDeleteId(null)}
+      onShowFlash={showFlash}
+      onSetEditName={setEditName}
+      onSetEditCategory={setEditCategory}
+      onSetEditNotes={setEditNotes}
+      onLoadEmotion={onLoadEmotion}
+      onDeleteEmotion={onDeleteEmotion}
+      onStartAddEmotion={setEmotionPresetId}
+      onCancelAddEmotion={() => { setEmotionPresetId(null); setEmotionName('') }}
+      onSetEmotionName={setEmotionName}
+      onAddEmotion={handleAddEmotion}
+    />
+  )
 
   // ─── Main Render ────────────────────────────────────────────────────
 

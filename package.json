@@ -1,6 +1,6 @@
 {
   "name": "voxsmith",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Desktop voice processing application for indie game developers",
   "main": "./out/main/index.js",
   "scripts": {

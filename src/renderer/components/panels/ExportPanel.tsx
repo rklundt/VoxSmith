@@ -270,13 +270,6 @@ export function ExportPanel(props: ExportPanelProps): React.ReactElement {
 
 // ─── Shared Inline Styles ─────────────────────────────────────────────────
 
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '11px',
-  color: '#999',
-  marginBottom: '3px',
-}
-
 /** Label row with (?) icon — flexbox so the icon sits inline with the text */
 const labelWithHelpStyle: React.CSSProperties = {
   display: 'flex',

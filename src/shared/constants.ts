@@ -129,6 +129,27 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   },
 }
 
+// ─── Audio Effect Constants ──────────────────────────────────────────────
+
+import type { EffectName } from './types'
+
+/**
+ * A6: Ordered list of all effects that support wet/dry mix controls.
+ * Used by ControlPanel for rendering per-effect wet/dry sliders and by
+ * any future UI that needs to iterate over the effect set.
+ */
+export const EFFECT_NAMES: readonly EffectName[] = [
+  'vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb',
+] as const
+
+/**
+ * A6: EQ band labels displayed in the UI.
+ * Matches the 4-band EQ defined in DEFAULT_ENGINE_SNAPSHOT.eq.
+ */
+export const EQ_BAND_LABELS = [
+  'Low (200 Hz)', 'Low-Mid (800 Hz)', 'Hi-Mid (2.5 kHz)', 'High (8 kHz)',
+] as const
+
 // ─── Misc Constants ──────────────────────────────────────────────────────────
 
 /** Minimum allowed value for maxSessionFiles to prevent accidental deletion of all logs */

@@ -176,9 +176,21 @@ app.whenReady().then(() => {
     // Extract the filename from the URL: portrait://filename.png
     // URL parsing gives us the hostname as the filename for scheme://host format
     const url = new URL(request.url)
-    // The filename is in the hostname (portrait://abc123.png -> hostname = "abc123.png")
-    const filename = url.hostname + url.pathname
-    const filePath = path.join(portraitsDir, filename)
+
+    // SECURITY (S1): Strip path components to prevent directory traversal.
+    // A malicious portraitPath like "../../etc/hosts" in presets.json would
+    // otherwise serve arbitrary files from the filesystem.
+    const rawFilename = url.hostname + url.pathname
+    const safeFilename = path.basename(rawFilename)
+    const filePath = path.resolve(portraitsDir, safeFilename)
+
+    // Double-check: resolved path must be inside the portraits directory.
+    // path.basename alone handles most cases, but this is defense-in-depth.
+    if (!filePath.startsWith(path.resolve(portraitsDir))) {
+      logger.error(`Portrait protocol: path escape attempt blocked: ${request.url}`)
+      return new Response('Forbidden', { status: 403 })
+    }
+
     logger.debug(`Portrait protocol: serving ${filePath}`)
     return net.fetch(`file://${filePath}`)
   })

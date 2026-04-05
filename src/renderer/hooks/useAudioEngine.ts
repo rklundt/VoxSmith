@@ -44,6 +44,13 @@ import type { EffectName } from '../../shared/types'
 // would operate on different AudioContexts.
 let singletonEngine: AudioEngine | null = null
 
+// Reference count tracks how many mounted components are using the engine.
+// The engine is only disposed when the LAST consumer unmounts (count drops to 0).
+// Without this, conditionally rendered panels (e.g., RecordingPanel) would destroy
+// the engine on hide — killing the originalBuffer and breaking Stage 1 Apply for
+// ControlPanel which is still mounted.
+let engineRefCount = 0
+
 export function useAudioEngine() {
   // Lazy-initialize the singleton on first access from any component.
   // All subsequent calls return the same instance.
@@ -54,13 +61,17 @@ export function useAudioEngine() {
     return singletonEngine
   }, [])
 
-  // Clean up the engine when the top-level App unmounts.
-  // Because the singleton is shared, only the first unmount disposes it.
-  // This is fine because App is the outermost consumer and always unmounts last.
+  // Track mount/unmount of each consumer. Only dispose the engine when the
+  // last consumer unmounts (i.e., the app is shutting down). This prevents
+  // RecordingPanel hide/show from destroying the shared AudioEngine.
   useEffect(() => {
+    engineRefCount++
     return () => {
-      singletonEngine?.dispose()
-      singletonEngine = null
+      engineRefCount--
+      if (engineRefCount === 0) {
+        singletonEngine?.dispose()
+        singletonEngine = null
+      }
     }
   }, [])
 
@@ -92,9 +103,12 @@ export function useAudioEngine() {
 
   // ─── Playback Controls ────────────────────────────────────────────────
 
+  // B1: play() is now async (awaits ctx.resume() for suspended AudioContext).
+  // We fire-and-forget the promise — setIsPlaying(true) happens immediately so the
+  // UI updates without waiting for the AudioContext to resume.
   const play = useCallback(() => {
     const engine = getEngine()
-    engine.play(() => {
+    void engine.play(() => {
       // Callback when playback ends naturally
       useEngineStore.getState().setIsPlaying(false)
     })

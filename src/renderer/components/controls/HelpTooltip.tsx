@@ -33,7 +33,7 @@
  *  - 'right': tooltip opens to the left of the icon (for right-side panels)
  */
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useId } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface HelpTooltipProps {
@@ -58,7 +58,9 @@ export function HelpTooltip({ detail, pairsWith, anchor = 'left' }: HelpTooltipP
   const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Ref to the "?" icon so we can measure its screen position
-  const iconRef = useRef<HTMLSpanElement>(null)
+  const iconRef = useRef<HTMLButtonElement>(null)
+  // X3: Unique ID for aria-describedby linking icon to tooltip
+  const tooltipId = useId()
 
   const handleMouseEnter = useCallback(() => {
     // ~200ms delay — half the default browser title delay (~400ms)
@@ -90,49 +92,71 @@ export function HelpTooltip({ detail, pairsWith, anchor = 'left' }: HelpTooltipP
     setVisible(false)
   }, [])
 
+  // X3: Keyboard handler — show tooltip on focus, hide on blur
+  const handleFocus = useCallback(() => {
+    handleMouseEnter()
+  }, [handleMouseEnter])
+
+  const handleBlur = useCallback(() => {
+    handleMouseLeave()
+  }, [handleMouseLeave])
+
   return (
-    <span
-      ref={iconRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}
-    >
-      {/* The "?" circle */}
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '14px',
-        height: '14px',
-        borderRadius: '50%',
-        border: '1px solid #555',
-        fontSize: '9px',
-        color: '#777',
-        cursor: 'help',
-      }}>
+    <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+      {/* X3: <button> for keyboard accessibility (was <span>).
+       * Uses onFocus/onBlur so keyboard users can Tab to the icon and see the tooltip.
+       * aria-describedby links this button to the tooltip content for screen readers. */}
+      <button
+        ref={iconRef}
+        type="button"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        aria-label="Help"
+        aria-describedby={visible ? tooltipId : undefined}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '14px',
+          height: '14px',
+          borderRadius: '50%',
+          border: '1px solid #555',
+          background: 'none',
+          fontSize: '9px',
+          color: '#777',
+          cursor: 'help',
+          padding: 0,
+        }}
+      >
         ?
-      </span>
+      </button>
 
       {/* Tooltip popup — rendered via Portal at <body> to escape overflow clipping */}
       {visible && createPortal(
-        <div style={{
-          position: 'fixed',
-          top: `${position.top}px`,
-          left: `${position.left}px`,
-          backgroundColor: '#1e2a3a',
-          border: '1px solid #3a4a5a',
-          borderRadius: '6px',
-          padding: '10px 12px',
-          fontSize: '12px',
-          lineHeight: '1.5',
-          color: '#d0d0d0',
-          width: `${TOOLTIP_WIDTH}px`,
-          whiteSpace: 'normal',
-          wordWrap: 'break-word',
-          zIndex: 10000,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-          pointerEvents: 'none',
-        }}>
+        <div
+          id={tooltipId}
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            top: `${position.top}px`,
+            left: `${position.left}px`,
+            backgroundColor: '#1e2a3a',
+            border: '1px solid #3a4a5a',
+            borderRadius: '6px',
+            padding: '10px 12px',
+            fontSize: '12px',
+            lineHeight: '1.5',
+            color: '#d0d0d0',
+            width: `${TOOLTIP_WIDTH}px`,
+            whiteSpace: 'normal',
+            wordWrap: 'break-word',
+            zIndex: 10000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            pointerEvents: 'none',
+          }}
+        >
           <div style={{ marginBottom: '6px' }}>{detail}</div>
           <div style={{ fontSize: '11px', color: '#8a9aaa' }}>
             Works well with: {pairsWith.join(', ')}

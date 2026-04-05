@@ -37,7 +37,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import { useEngineStore, computeIsStale } from '../../stores/engineStore'
-import { DEFAULT_ENGINE_SNAPSHOT } from '../../../shared/constants'
+import { DEFAULT_ENGINE_SNAPSHOT, EFFECT_NAMES, EQ_BAND_LABELS } from '../../../shared/constants'
 import { TOOLTIPS } from '../../../shared/tooltips'
 import { HelpTooltip } from '../controls/HelpTooltip'
 import { useAudioEngine } from '../../hooks/useAudioEngine'
@@ -352,8 +352,8 @@ export function ControlPanel(): React.ReactElement {
   // Stage 1 controls disabled during processing OR mic monitoring
   const stage1Disabled = isProcessing || micActive
 
-  // EQ band labels for display
-  const eqLabels = ['Low (200 Hz)', 'Low-Mid (800 Hz)', 'Hi-Mid (2.5 kHz)', 'High (8 kHz)']
+  // A6: EQ band labels from shared constants
+  const eqLabels = EQ_BAND_LABELS
 
   return (
     <div
@@ -373,8 +373,11 @@ export function ControlPanel(): React.ReactElement {
           VoxSmith
         </h1>
         {/* Bypass toggle - always visible for quick A/B comparison */}
+        {/* X1: aria-pressed for toggle state, aria-label for screen readers */}
         <button
           onClick={handleBypassToggle}
+          aria-pressed={snapshot.bypassed}
+          aria-label={snapshot.bypassed ? 'Effects bypassed, click to enable' : 'Bypass all effects'}
           style={{
             padding: '4px 12px',
             borderRadius: '4px',
@@ -459,6 +462,7 @@ export function ControlPanel(): React.ReactElement {
             onClick={isPlaying ? pause : play}
             disabled={!hasFile}
             style={buttonStyle(hasFile)}
+            aria-label={isPlaying ? 'Pause playback' : 'Play audio'}
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
@@ -466,6 +470,7 @@ export function ControlPanel(): React.ReactElement {
             onClick={stop}
             disabled={!hasFile || !isPlaying}
             style={buttonStyle(hasFile && isPlaying)}
+            aria-label="Stop playback"
           >
             Stop
           </button>
@@ -496,6 +501,10 @@ export function ControlPanel(): React.ReactElement {
               step="0.01"
               value={volume}
               onChange={handleVolumeChange}
+              aria-label="Volume"
+              aria-valuemin={0}
+              aria-valuemax={2}
+              aria-valuenow={volume}
               style={{ width: '120px' }}
             />
             <span style={{ fontSize: '12px', color: '#888', minWidth: '36px' }}>
@@ -512,7 +521,7 @@ export function ControlPanel(): React.ReactElement {
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
             (offline - click Apply to process)
           </span>
-          <span onClick={resetStage1} style={resetLinkStyle}>reset</span>
+          <button onClick={resetStage1} style={resetLinkStyle} aria-label="Reset Stage 1 settings">reset</button>
         </h2>
 
         {/* Stale indicator */}
@@ -638,13 +647,15 @@ export function ControlPanel(): React.ReactElement {
           <span style={{ fontSize: '11px', fontWeight: 'normal', color: '#888', marginLeft: '8px' }}>
             (updates live)
           </span>
-          <span onClick={resetStage2} style={resetLinkStyle}>reset</span>
+          <button onClick={resetStage2} style={resetLinkStyle} aria-label="Reset Stage 2 effects">reset</button>
         </h2>
 
         {/* Basic/Advanced mode toggle */}
         <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={() => setAdvancedMode(!advancedMode)}
+            aria-pressed={advancedMode}
+            aria-label={advancedMode ? 'Switch to basic mode' : 'Switch to advanced mode'}
             style={{
               padding: '3px 10px',
               borderRadius: '4px',
@@ -790,7 +801,7 @@ export function ControlPanel(): React.ReactElement {
               Wet/Dry Mix
               <HelpTooltip detail={TOOLTIPS.wetDry.detail} pairsWith={TOOLTIPS.wetDry.pairsWith} />
             </h3>
-            {(['vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb'] as EffectName[]).map(
+            {EFFECT_NAMES.map(
               (effect) => (
                 <SliderControl
                   key={effect}
@@ -892,6 +903,7 @@ function SliderControl({ label, value, min, max, step, unit, tooltipKey, disable
           <HelpTooltip detail={tooltip.detail} pairsWith={tooltip.pairsWith} />
         )}
       </label>
+      {/* X1: ARIA attributes for screen readers — label text, value range, and current value */}
       <input
         type="range"
         min={min}
@@ -900,6 +912,10 @@ function SliderControl({ label, value, min, max, step, unit, tooltipKey, disable
         value={value}
         disabled={disabled}
         onChange={onChange}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
         style={{ flex: 1, maxWidth: '300px', opacity: disabled ? 0.4 : 1 }}
       />
       <span style={{ fontSize: '12px', color: '#aaa', minWidth: '60px' }}>
@@ -930,6 +946,7 @@ const subHeaderStyle: React.CSSProperties = {
   gap: '6px',
 }
 
+// X2: Changed from <span> to <button> — added background/border/padding resets
 const resetLinkStyle: React.CSSProperties = {
   fontSize: '11px',
   fontWeight: 'normal',
@@ -938,6 +955,9 @@ const resetLinkStyle: React.CSSProperties = {
   cursor: 'pointer',
   textDecoration: 'underline',
   userSelect: 'none',
+  background: 'none',
+  border: 'none',
+  padding: 0,
 }
 
 function buttonStyle(enabled: boolean): React.CSSProperties {

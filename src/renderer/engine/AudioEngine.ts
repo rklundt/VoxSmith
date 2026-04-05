@@ -164,7 +164,9 @@ export class AudioEngine {
 
   // Reusable typed array for reading time-domain amplitude samples.
   // Allocated once in the constructor to avoid per-frame GC pressure.
-  // Explicit ArrayBuffer generic avoids TS strict ArrayBufferLike mismatch.
+  // A4: Use standard Float32Array type instead of non-standard Float32Array<ArrayBuffer> generic.
+  // A4: Explicit ArrayBuffer generic needed — Web Audio API's getFloatTimeDomainData()
+  // expects Float32Array<ArrayBuffer>, not Float32Array<ArrayBufferLike>
   private analyserData: Float32Array<ArrayBuffer>
 
   constructor() {
@@ -293,16 +295,17 @@ export class AudioEngine {
    *
    * @param onEnd - Optional callback when playback finishes naturally
    */
-  play(onEnd?: () => void): void {
+  async play(onEnd?: () => void): Promise<void> {
     const buffer = this.activeBuffer
     if (!buffer) return
 
     // Stop any existing playback first
     this.stopSource()
 
-    // Ensure context is running
+    // B1: Ensure context is running — must await to prevent unhandled promise rejection.
+    // All other resume() calls in this file are correctly awaited; this one was missed.
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume()
+      await this.ctx.resume()
     }
 
     // Create a fresh source node for this playback
@@ -723,7 +726,12 @@ export class AudioEngine {
     // Listen for sample chunks — only collected when _isRecording is true
     this.recorderNode.port.onmessage = (event: MessageEvent) => {
       if (event.data.type === 'samples' && this.recordingBuffer && this._isRecording) {
-        this.recordingBuffer.addChunk(event.data.data as Float32Array)
+        // B5: Validate the worklet message data is actually a Float32Array
+        // before adding to the recording buffer. Defensive against malformed messages.
+        const chunk = event.data.data
+        if (chunk instanceof Float32Array) {
+          this.recordingBuffer.addChunk(chunk)
+        }
       }
     }
 

@@ -31,10 +31,12 @@
  * monitoring — those controls are disabled during mic mode. The user records
  * first, then applies Stage 1 to the recorded take.
  *
- * Recording uses a ScriptProcessorNode tapped into the effects chain input
- * (pre-effects) to capture the raw mic signal. The processed (post-effects)
- * audio goes to speakers for monitoring. This way the recorded take is "dry"
- * and can be re-processed with different settings later.
+ * Recording uses a persistent AudioWorkletNode (recorder-processor.js) connected
+ * as a parallel tap from the volumeGain node. The recorder node is created once
+ * at mic start and stays connected for the entire session — recording start/stop
+ * is just a message to the worklet, not node creation (eliminates per-recording
+ * latency overhead). The tap captures raw (pre-effects) audio so the recorded
+ * take is "dry" and can be re-processed with different settings later.
  */
 
 import type { MicDevice } from '../../shared/types'
@@ -205,8 +207,7 @@ export class RecordingBuffer {
   toAudioBuffer(context: BaseAudioContext): AudioBuffer {
     const samples = this.toFloat32Array()
     const buffer = context.createBuffer(1, this._sampleCount, this._sampleRate)
-    // Explicit ArrayBuffer generic avoids TS strict ArrayBufferLike mismatch
-    // (same pattern as AudioEngine.analyserData)
+    // A4: copyToChannel expects Float32Array<ArrayBuffer> — cast from ArrayBufferLike
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0)
     return buffer
   }
