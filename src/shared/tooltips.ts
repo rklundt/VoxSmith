@@ -370,6 +370,33 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
 
   // ─── Recording ─────────────────────────────────────────────────────
 
+  micInput: {
+    label: 'Microphone Input',
+    short: 'Record your voice through VoxSmith effects.',
+    detail:
+      'Select your mic and hear your voice through the effects chain in real time. ' +
+      'Stage 1 effects (pitch, formant, tempo) are applied after recording via the Apply button. ' +
+      'Use a dedicated recording mic for best results — built-in laptop mics add noise.',
+    pairsWith: ['Count-In', 'Take Management'],
+    poweredBy: 'Web Audio API (getUserMedia + MediaStreamSource)',
+  },
+
+  // Noise Suppression — deferred to Sprint 7.2 (RNNoise WASM AudioWorklet).
+  // Electron/Chromium ignores the getUserMedia noiseSuppression constraint.
+  // Sprint 7.2 will add a real RNNoise-based noise suppressor in the signal chain.
+  // Tooltip preserved here so the copy is ready when the UI toggle is re-added.
+  noiseSuppression: {
+    label: 'Noise Suppression',
+    short: 'Filters ambient noise from your mic signal using AI-based noise removal.',
+    detail:
+      'Uses RNNoise (a neural-network noise suppressor) running as a WASM AudioWorklet ' +
+      'to remove background noise (fan hum, air conditioning, room tone, keyboard clicks) ' +
+      'in real time before audio enters the effects chain. On by default. Turn off in a ' +
+      'quiet/treated studio for the cleanest possible signal.',
+    pairsWith: ['Microphone Input', 'Monitor Mute'],
+    poweredBy: 'RNNoise WASM (AudioWorklet)',
+  },
+
   countIn: {
     label: 'Count-In',
     short: 'Plays a countdown before recording starts.',
@@ -395,8 +422,8 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     label: 'Punch-In Recording',
     short: 'Re-record a specific section without redoing the whole take.',
     detail:
-      'Mark a start and end point on the waveform, then record - only that region is replaced. ' +
-      'Use this to fix a single word or phrase in an otherwise good take. ' +
+      'Click the waveform to position the cursor, then use Mark Start and Mark End to define the region. ' +
+      'Press P or click Punch In to re-record just that section. ' +
       'The rest of the take is preserved exactly.',
     pairsWith: ['Take Management', 'Waveform Display'],
     poweredBy: 'Web Audio API (MediaRecorder + buffer splicing)',

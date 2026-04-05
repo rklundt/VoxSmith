@@ -37,6 +37,10 @@ import type {
   ExportResult,
   BatchExportRequest,
   BatchExportResult,
+  Take,
+  TakeSaveRequest,
+  TakeSaveResult,
+  TakeLoadResult,
 } from '../shared/types'
 
 export interface VoxsmithAPI {
@@ -62,6 +66,12 @@ export interface VoxsmithAPI {
   openWavDialog(): Promise<string | null>
   saveWavDialog(name: string): Promise<string | null>
   openImageDialog(): Promise<string | null>
+
+  // Take Management (Sprint 7)
+  saveTake(request: TakeSaveRequest): Promise<TakeSaveResult>
+  loadTake(takeId: string): Promise<TakeLoadResult>
+  deleteTake(takeId: string): Promise<{ success: boolean }>
+  listTakes(): Promise<Take[]>
 }
 
 declare global {

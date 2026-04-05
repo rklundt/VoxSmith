@@ -65,6 +65,11 @@ export function ControlPanel(): React.ReactElement {
   const stage1Status = useEngineStore((s) => s.stage1Status)
   const stage1Error = useEngineStore((s) => s.stage1Error)
   const appliedStage1Params = useEngineStore((s) => s.appliedStage1Params)
+
+  // Mic mode: Stage 1 controls are disabled during live mic monitoring
+  // because pitch/formant/tempo require offline processing (Rubber Band CLI).
+  // The user records first, then applies Stage 1 to the recorded take.
+  const micActive = useEngineStore((s) => s.micActive)
   const updateParam = useEngineStore((s) => s.updateParam)
 
   // Derive isStale directly from primitive values rather than reading the store's
@@ -344,6 +349,9 @@ export function ControlPanel(): React.ReactElement {
 
   const isProcessing = stage1Status === 'processing'
 
+  // Stage 1 controls disabled during processing OR mic monitoring
+  const stage1Disabled = isProcessing || micActive
+
   // EQ band labels for display
   const eqLabels = ['Low (200 Hz)', 'Low-Mid (800 Hz)', 'Hi-Mid (2.5 kHz)', 'High (8 kHz)']
 
@@ -552,12 +560,29 @@ export function ControlPanel(): React.ReactElement {
           </div>
         )}
 
+        {/* Mic mode indicator: Stage 1 controls are disabled during live monitoring */}
+        {micActive && (
+          <div style={{
+            marginBottom: '8px',
+            padding: '6px 8px',
+            backgroundColor: '#1a2a1a',
+            border: '1px solid #3a5a3a',
+            borderRadius: '4px',
+            fontSize: '11px',
+            color: '#8c8',
+            lineHeight: 1.4,
+          }}>
+            🎙 Mic active — Stage 1 controls disabled during monitoring.
+            Record a take first, then apply pitch/formant/speed.
+          </div>
+        )}
+
         <SliderControl
           label="Pitch"
           value={snapshot.pitch}
           min={-24} max={24} step={1}
           unit="st" tooltipKey="pitch"
-          disabled={isProcessing}
+          disabled={stage1Disabled}
           onChange={handlePitchChange}
         />
 
@@ -568,7 +593,7 @@ export function ControlPanel(): React.ReactElement {
           value={snapshot.formant}
           min={-1} max={1} step={0.01}
           unit="oct" tooltipKey="formant"
-          disabled={isProcessing}
+          disabled={stage1Disabled}
           onChange={handleFormantChange}
         />
         <SliderControl
@@ -576,7 +601,7 @@ export function ControlPanel(): React.ReactElement {
           value={snapshot.speed}
           min={0.5} max={2.0} step={0.05}
           unit="x" tooltipKey="speed"
-          disabled={isProcessing}
+          disabled={stage1Disabled}
           onChange={handleSpeedChange}
         />
 
@@ -584,10 +609,10 @@ export function ControlPanel(): React.ReactElement {
         <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
           <button
             onClick={applyStage1}
-            disabled={!hasFile || isProcessing || !isStale}
+            disabled={!hasFile || stage1Disabled || !isStale}
             style={{
-              ...buttonStyle(hasFile && !isProcessing && isStale),
-              backgroundColor: hasFile && !isProcessing && isStale ? '#1565c0' : undefined,
+              ...buttonStyle(hasFile && !stage1Disabled && isStale),
+              backgroundColor: hasFile && !stage1Disabled && isStale ? '#1565c0' : undefined,
               minWidth: '100px',
             }}
           >

@@ -26,10 +26,12 @@
  * and image file dialog are functional. Export and WAV dialogs are stubs.
  */
 
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import type winston from 'winston'
+import fs from 'fs'
+import path from 'path'
 import { IPC } from '../../shared/constants'
-import type { AppSettings, Preset, AudioProcessRequest, ExportRequest } from '../../shared/types'
+import type { AppSettings, Preset, AudioProcessRequest, ExportRequest, TakeSaveRequest, Take } from '../../shared/types'
 import { loadSettings, saveSettingsOverride } from '../fileSystem/settings'
 import { processAudio, cancelProcessing } from '../rubberband/processAudio'
 import { loadAllPresets, savePreset, deletePreset, savePortrait, resolvePortraitUri } from '../fileSystem/presets'
@@ -269,6 +271,101 @@ export function registerIpcHandlers(logger: winston.Logger): void {
     } catch (err) {
       logger.error(`IPC: ${IPC.DIALOG_OPEN_IMAGE} - failed: ${err}`)
       return null
+    }
+  })
+
+  // ─── Take Management (Sprint 7) ──────────────────────────────────────
+  // Takes are stored as WAV files in a "takes" directory under userData.
+  // This provides persistence across sessions without cluttering the project.
+
+  const takesDir = path.join(app.getPath('userData'), 'takes')
+
+  ipcMain.handle(IPC.TAKE_SAVE, async (_event, request: TakeSaveRequest) => {
+    logger.debug(`IPC: ${IPC.TAKE_SAVE} - saving take "${request.take.name}" (${request.take.id})`)
+    try {
+      // Ensure takes directory exists
+      fs.mkdirSync(takesDir, { recursive: true })
+
+      const filePath = path.join(takesDir, `${request.take.id}.wav`)
+
+      // Write the WAV data to disk
+      const buffer = Buffer.from(request.audioData)
+      fs.writeFileSync(filePath, buffer)
+
+      logger.debug(`IPC: ${IPC.TAKE_SAVE} - success: ${filePath}`)
+      return { success: true, filePath }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      logger.error(`IPC: ${IPC.TAKE_SAVE} - failed: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  })
+
+  ipcMain.handle(IPC.TAKE_LOAD, async (_event, takeId: string) => {
+    logger.debug(`IPC: ${IPC.TAKE_LOAD} - loading take ${takeId}`)
+    try {
+      const filePath = path.join(takesDir, `${takeId}.wav`)
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: `Take file not found: ${takeId}` }
+      }
+
+      const data = fs.readFileSync(filePath)
+      // Convert Node Buffer to ArrayBuffer for IPC transfer
+      const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+
+      logger.debug(`IPC: ${IPC.TAKE_LOAD} - success (${data.length} bytes)`)
+      return { success: true, audioData: arrayBuffer }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      logger.error(`IPC: ${IPC.TAKE_LOAD} - failed: ${errorMsg}`)
+      return { success: false, error: errorMsg }
+    }
+  })
+
+  ipcMain.handle(IPC.TAKE_DELETE, async (_event, takeId: string) => {
+    logger.debug(`IPC: ${IPC.TAKE_DELETE} - deleting take ${takeId}`)
+    try {
+      const filePath = path.join(takesDir, `${takeId}.wav`)
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+        logger.debug(`IPC: ${IPC.TAKE_DELETE} - success`)
+      } else {
+        logger.debug(`IPC: ${IPC.TAKE_DELETE} - file not found (may be memory-only take)`)
+      }
+      return { success: true }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      logger.error(`IPC: ${IPC.TAKE_DELETE} - failed: ${errorMsg}`)
+      return { success: false }
+    }
+  })
+
+  ipcMain.handle(IPC.TAKE_LIST, async () => {
+    logger.debug(`IPC: ${IPC.TAKE_LIST} - listing takes`)
+    try {
+      if (!fs.existsSync(takesDir)) {
+        return []
+      }
+
+      const files = fs.readdirSync(takesDir).filter((f) => f.endsWith('.wav'))
+      const takes: Take[] = files.map((filename) => {
+        const filePath = path.join(takesDir, filename)
+        const stat = fs.statSync(filePath)
+        const id = filename.replace('.wav', '')
+        return {
+          id,
+          name: id,
+          durationMs: 0, // Duration is stored in renderer memory, not on disk metadata
+          createdAt: stat.mtimeMs,
+          filePath,
+        }
+      })
+
+      logger.debug(`IPC: ${IPC.TAKE_LIST} - found ${takes.length} takes`)
+      return takes
+    } catch (err) {
+      logger.error(`IPC: ${IPC.TAKE_LIST} - failed: ${err}`)
+      return []
     }
   })
 
