@@ -164,6 +164,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
             lineHeight: 1,
           }}
           title="Hide Recording Panel"
+          aria-label="Close recording panel"
         >
           &#x2715;
         </button>
@@ -193,6 +194,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
             onChange={handleDeviceChange}
             style={selectStyle}
             disabled={isRecording || isCountingIn}
+            aria-label="Select microphone"
           >
             <option value="">System Default</option>
             {devices.map((d: MicDevice) => (
@@ -207,6 +209,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
         <button
           onClick={micActive ? stopMic : startMic}
           disabled={isRecording || isCountingIn}
+          aria-label={micActive ? 'Stop microphone monitoring' : 'Start microphone monitoring'}
           style={{
             padding: '8px 12px',
             borderRadius: '4px',
@@ -226,6 +229,8 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
           <div>
             <button
               onClick={toggleMonitorMute}
+              aria-pressed={!monitorMuted}
+              aria-label={monitorMuted ? 'Enable monitor audio' : 'Mute monitor audio'}
               style={{
                 width: '100%',
                 padding: '6px 10px',
@@ -281,6 +286,8 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
                   key={n}
                   onClick={() => setCountInTotal(n)}
                   disabled={isRecording || isCountingIn}
+                  aria-label={n === 0 ? 'No count-in' : `${n} beat count-in`}
+                  aria-pressed={countInTotal === n}
                   style={{
                     flex: 1,
                     padding: '4px',
@@ -303,6 +310,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
         {micActive && (
           <button
             onClick={isRecording || isCountingIn ? stopRecording : startRecording}
+            aria-label={isRecording ? 'Stop recording' : isCountingIn ? 'Cancel count-in' : 'Start recording'}
             style={{
               padding: '10px 12px',
               borderRadius: '4px',
@@ -396,6 +404,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
                       padding: '3px 6px',
                     }}
                     title="Play this take"
+                    aria-label={`Play take ${take.name}`}
                   >
                     ▶
                   </button>
@@ -414,6 +423,7 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
                       padding: '3px 6px',
                     }}
                     title="Delete this take"
+                    aria-label={`Delete take ${take.name}`}
                   >
                     ✕
                   </button>

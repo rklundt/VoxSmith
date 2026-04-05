@@ -17,22 +17,26 @@
  */
 
 /**
- * Session Store - Zustand
+ * Session Store - Zustand (PLACEHOLDER — Sprint 8+)
  *
- * Owns: script lines (Phase 3), take list, recording state, punch-in markers, export queue.
+ * NOT currently used. Kept as a documented placeholder for future sprint work:
+ *  - Sprint 8: Take list management, recording session state, export queue
+ *  - Sprint 9: Script import, session management, line-by-line workflow
  *
- * Sprint 0: Stub with empty state only.
- * Sprint 7: Will be populated with recording and take management.
- * Sprint 9: Will add script import and session management.
+ * Recording state currently lives in engineStore (recordingState, activeTake).
+ * This store will own session-level state once Sprint 8 adds multi-take workflows.
+ *
+ * If this file is still unused after Sprint 9, delete it.
  */
 
 import { create } from 'zustand'
 
 interface SessionState {
-  /** Whether the app is currently recording from mic */
-  isRecording: boolean
+  // TODO Sprint 8: Add takes[], activeTakeId, exportQueue
+  /** Placeholder — not currently wired to any component */
+  placeholder: boolean
 }
 
 export const useSessionStore = create<SessionState>(() => ({
-  isRecording: false,
+  placeholder: false,
 }))

@@ -103,6 +103,11 @@ function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* A8: CSS hover styles — replaces inline style.backgroundColor mutations */}
+      <style>{`
+        .vox-menu-btn { background: none; }
+        .vox-menu-btn:hover { background-color: #2a2a4e !important; }
+      `}</style>
       {/* ── Top Bar ─────────────────────────────────────────────────── */}
       <div style={{
         display: 'flex',
@@ -153,56 +158,50 @@ function App(): React.ReactElement {
               boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             }}>
               <button
+                className="vox-menu-btn"
                 onClick={togglePresets}
                 style={{
                   display: 'block',
                   width: '100%',
                   textAlign: 'left',
-                  background: 'none',
                   border: 'none',
                   color: '#ccc',
                   padding: '6px 12px',
                   cursor: 'pointer',
                   fontSize: '12px',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 {showPresets ? 'Hide Presets' : 'Show Presets'}
               </button>
               <button
+                className="vox-menu-btn"
                 onClick={toggleRecording}
                 style={{
                   display: 'block',
                   width: '100%',
                   textAlign: 'left',
-                  background: 'none',
                   border: 'none',
                   color: '#ccc',
                   padding: '6px 12px',
                   cursor: 'pointer',
                   fontSize: '12px',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 {showRecording ? 'Hide Recording' : 'Show Recording'}
               </button>
               <button
+                className="vox-menu-btn"
                 onClick={toggleExport}
                 style={{
                   display: 'block',
                   width: '100%',
                   textAlign: 'left',
-                  background: 'none',
                   border: 'none',
                   color: '#ccc',
                   padding: '6px 12px',
                   cursor: 'pointer',
                   fontSize: '12px',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2a2a4e')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 {showExport ? 'Hide Export' : 'Show Export'}
               </button>

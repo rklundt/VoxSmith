@@ -96,7 +96,11 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   })
 
   ipcMain.handle(IPC.PRESET_SAVE, async (_event, preset: Preset) => {
-    logger.debug(`IPC: ${IPC.PRESET_SAVE} - saving preset: "${preset?.name ?? 'unknown'}"`)
+    // SECURITY (S3): Validate input before processing
+    if (!preset || typeof preset !== 'object' || !preset.id || !preset.name) {
+      throw new Error('Invalid preset: must have id and name')
+    }
+    logger.debug(`IPC: ${IPC.PRESET_SAVE} - saving preset: "${preset.name}"`)
     try {
       savePreset(preset, logger)
       logger.debug(`IPC: ${IPC.PRESET_SAVE} - success`)
@@ -107,6 +111,10 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   })
 
   ipcMain.handle(IPC.PRESET_DELETE, async (_event, presetId: string) => {
+    // SECURITY (S3): Validate input before processing
+    if (!presetId || typeof presetId !== 'string') {
+      throw new Error('Invalid presetId: must be a non-empty string')
+    }
     logger.debug(`IPC: ${IPC.PRESET_DELETE} - deleting preset: ${presetId}`)
     try {
       deletePreset(presetId, logger)
@@ -118,6 +126,10 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   })
 
   ipcMain.handle(IPC.PRESET_SAVE_PORTRAIT, async (_event, args: { sourcePath: string; presetId: string }) => {
+    // SECURITY (S3): Validate input before processing
+    if (!args || !args.sourcePath || !args.presetId) {
+      throw new Error('Invalid portrait args: must have sourcePath and presetId')
+    }
     logger.debug(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - copying portrait for preset ${args.presetId}`)
     try {
       const relativePath = savePortrait(args.sourcePath, args.presetId, logger)
@@ -127,10 +139,14 @@ export function registerIpcHandlers(logger: winston.Logger): void {
         logger.debug(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - success: ${relativePath}`)
         return { relativePath, uri }
       }
+      // savePortrait returns null when extension is rejected (S6) — propagate as null
+      // (not an error, just a validation rejection the renderer handles gracefully)
       return null
     } catch (err) {
+      // A2: Standardize to throw on error (not swallow as null).
+      // Sprint 8 will layer user-facing error messaging on top of thrown errors.
       logger.error(`IPC: ${IPC.PRESET_SAVE_PORTRAIT} - failed: ${err}`)
-      return null
+      throw err instanceof Error ? err : new Error(String(err))
     }
   })
 
@@ -185,6 +201,17 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   // the CLI binary, reads the output, cleans up temps, and returns the result.
 
   ipcMain.handle(IPC.AUDIO_PROCESS, async (_event, request: AudioProcessRequest) => {
+    // SECURITY (S5): Validate audio processing request parameters.
+    // Invalid values could crash Rubber Band or hang the main process.
+    if (!request || !request.audioData || request.audioData.byteLength === 0) {
+      return { success: false, error: 'No audio data provided' }
+    }
+    if (request.sampleRate < 8000 || request.sampleRate > 192000) {
+      return { success: false, error: `Invalid sample rate: ${request.sampleRate}` }
+    }
+    if (request.channels < 1 || request.channels > 2) {
+      return { success: false, error: `Invalid channel count: ${request.channels}` }
+    }
     logger.debug(`IPC: ${IPC.AUDIO_PROCESS} - pitch=${request.pitch}, formant=${request.preserveFormant}, tempo=${request.tempo}`)
     try {
       const result = await processAudio(request, logger)
@@ -208,8 +235,11 @@ export function registerIpcHandlers(logger: winston.Logger): void {
 
   // ─── File Dialogs (stubs - Sprint 2) ─────────────────────────────────
 
+  // TODO Sprint 8: Implement File > Open dialog for WAV import.
+  // Currently files are loaded via drag-and-drop only. This stub exists so the
+  // IPC channel is registered and ready when a menu bar "Open" item is added.
   ipcMain.handle(IPC.DIALOG_OPEN_WAV, async () => {
-    logger.debug(`IPC: ${IPC.DIALOG_OPEN_WAV} - stub`)
+    logger.debug(`IPC: ${IPC.DIALOG_OPEN_WAV} - stub (not yet implemented)`)
     return null
   })
 
@@ -283,6 +313,14 @@ export function registerIpcHandlers(logger: winston.Logger): void {
   ipcMain.handle(IPC.TAKE_SAVE, async (_event, request: TakeSaveRequest) => {
     logger.debug(`IPC: ${IPC.TAKE_SAVE} - saving take "${request.take.name}" (${request.take.id})`)
     try {
+      // SECURITY (S7): Enforce file size limit to prevent disk exhaustion.
+      // 500 MB is generous — a 30-minute mono 48kHz 32-bit float WAV is ~330 MB.
+      const MAX_TAKE_SIZE_BYTES = 500 * 1024 * 1024
+      if (request.audioData.byteLength > MAX_TAKE_SIZE_BYTES) {
+        const sizeMB = (request.audioData.byteLength / (1024 * 1024)).toFixed(1)
+        return { success: false, error: `Take too large: ${sizeMB} MB exceeds 500 MB limit` }
+      }
+
       // Ensure takes directory exists
       fs.mkdirSync(takesDir, { recursive: true })
 
@@ -347,19 +385,24 @@ export function registerIpcHandlers(logger: winston.Logger): void {
         return []
       }
 
-      const files = fs.readdirSync(takesDir).filter((f) => f.endsWith('.wav'))
-      const takes: Take[] = files.map((filename) => {
+      // S8: Use async I/O to avoid blocking the main process.
+      // Limit to 1000 files to prevent hangs on directories with many files.
+      const allFiles = await fs.promises.readdir(takesDir)
+      const wavFiles = allFiles.filter((f) => f.endsWith('.wav')).slice(0, 1000)
+      const takes: Take[] = []
+
+      for (const filename of wavFiles) {
         const filePath = path.join(takesDir, filename)
-        const stat = fs.statSync(filePath)
+        const stat = await fs.promises.stat(filePath)
         const id = filename.replace('.wav', '')
-        return {
+        takes.push({
           id,
           name: id,
           durationMs: 0, // Duration is stored in renderer memory, not on disk metadata
           createdAt: stat.mtimeMs,
           filePath,
-        }
-      })
+        })
+      }
 
       logger.debug(`IPC: ${IPC.TAKE_LIST} - found ${takes.length} takes`)
       return takes

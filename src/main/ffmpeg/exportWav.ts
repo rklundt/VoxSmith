@@ -48,6 +48,7 @@ import { execFile } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { app } from 'electron'
 import type { Logger } from 'winston'
 import type { ExportRequest, ExportResult } from '../../shared/types'
 import { getFFmpegPath } from './binaryPath'
@@ -176,6 +177,21 @@ function buildFFmpegArgs(inputPath: string, outputPath: string, request: ExportR
  * @returns ExportResult with success/failure and output path
  */
 export async function exportWav(request: ExportRequest, logger: Logger): Promise<ExportResult> {
+  // SECURITY (S4): Validate the output path is within an allowed directory.
+  // The save dialog constrains path selection, but this is defense-in-depth
+  // against a compromised renderer sending an arbitrary path via IPC.
+  const resolvedOutput = path.resolve(request.outputPath)
+  const allowedRoots = [
+    path.resolve(app.getPath('home')),
+    path.resolve(app.getPath('documents')),
+    path.resolve(app.getPath('desktop')),
+    path.resolve(app.getPath('downloads')),
+  ]
+  if (!allowedRoots.some(root => resolvedOutput.startsWith(root))) {
+    logger.error(`Export path validation failed: ${resolvedOutput} is not within allowed directories`)
+    return { success: false, error: 'Output path must be within your home, documents, desktop, or downloads directory', outputPath: '' }
+  }
+
   const ffmpegPath = getFFmpegPath()
   logger.debug(`FFmpeg binary: ${ffmpegPath}`)
 

@@ -37,14 +37,18 @@ import { app } from 'electron'
  * catches this and returns an error result to the renderer.
  */
 export function getRubberbandPath(): string {
+  // A7: Platform-aware binary name — Windows uses .exe, Linux/macOS don't.
+  const ext = process.platform === 'win32' ? '.exe' : ''
+  const binaryName = `rubberband${ext}`
+
   // In production, electron-builder copies extraResources to process.resourcesPath
-  const productionPath = path.join(process.resourcesPath, 'rubberband', 'rubberband.exe')
+  const productionPath = path.join(process.resourcesPath, 'rubberband', binaryName)
 
   // In dev, the binary is in src/assets/rubberband/ relative to the compiled output
-  const devPath = path.join(__dirname, '../../src/assets/rubberband/rubberband.exe')
+  const devPath = path.join(__dirname, '../../src/assets/rubberband/', binaryName)
 
   // Also try relative to project root (when running from source via electron-vite)
-  const devAltPath = path.join(app.getAppPath(), 'src/assets/rubberband/rubberband.exe')
+  const devAltPath = path.join(app.getAppPath(), 'src/assets/rubberband/', binaryName)
 
   if (app.isPackaged && fs.existsSync(productionPath)) {
     return productionPath

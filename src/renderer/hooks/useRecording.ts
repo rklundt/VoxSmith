@@ -77,6 +77,14 @@ export function useRecording() {
   // Count-in timer ref
   const countInTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // B3: Punch-in timeout ref — used to cancel in-flight punches on re-entry
+  const punchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // B2: Stable ref for startRecordingImmediate — avoids stale closure in startCountIn.
+  // startCountIn uses useCallback([]) for stability, but needs to call the latest
+  // version of startRecordingImmediate. This ref is updated whenever the callback changes.
+  const startRecordingRef = useRef<() => Promise<void>>(() => Promise.resolve())
+
   // ─── Device Enumeration ─────────────────────────────────────────────
 
   /**
@@ -175,10 +183,11 @@ export function useRecording() {
     const tick = () => {
       remaining--
       if (remaining <= 0) {
-        // Count-in complete — start recording (async, but fire-and-forget here
-        // since errors are caught inside startRecordingImmediate)
+        // Count-in complete — start recording.
+        // B2: Use startRecordingRef to call the latest version of startRecordingImmediate,
+        // avoiding stale closure from the empty dependency array.
         store.getState().setCountInBeats(0)
-        void startRecordingImmediate()
+        void startRecordingRef.current()
       } else {
         store.getState().setCountInBeats(remaining)
         countInTimerRef.current = setTimeout(tick, 600)
@@ -187,7 +196,6 @@ export function useRecording() {
 
     // First tick after 600ms
     countInTimerRef.current = setTimeout(tick, 600)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ─── Recording ──────────────────────────────────────────────────────
@@ -219,6 +227,11 @@ export function useRecording() {
       store.getState().setRecordingState('idle')
     }
   }, [getEngine])
+
+  // B2: Keep the ref updated so startCountIn always calls the latest version
+  useEffect(() => {
+    startRecordingRef.current = startRecordingImmediate
+  }, [startRecordingImmediate])
 
   /**
    * Starts recording with optional count-in.
@@ -288,7 +301,24 @@ export function useRecording() {
     store.getState().addTake(take)
     store.getState().selectTake(take.id)
     store.getState().setRecordingState('stopped')
-  }, [getEngine])
+
+    // Auto-load the recorded take into the AudioEngine so Stage 1 Apply works
+    // immediately. Without this, the user would have to manually audition the
+    // take before Stage 1 processing could find an originalBuffer.
+    try {
+      const wavBytes = audioBufferToWav(audioBuffer)
+      // Stop mic monitoring — engine can only have one input source at a time
+      if (engine.micActive) {
+        engine.stopMicInput()
+        store.getState().setMicActive(false)
+      }
+      void loadFile(wavBytes).then(() => {
+        store.getState().setInputMode('file')
+      })
+    } catch (err) {
+      console.error('[Recording] Failed to auto-load take into engine:', err)
+    }
+  }, [getEngine, loadFile])
 
   /**
    * Toggle recording on/off — convenience for keyboard shortcut.
@@ -340,8 +370,15 @@ export function useRecording() {
     // Encode the AudioBuffer as WAV bytes so we can load it through the normal
     // file loading pipeline. This ensures the take goes through the same path
     // as any other audio file and can have Stage 1 applied to it.
-    const wavBytes = audioBufferToWav(buffer)
-    await loadFile(wavBytes)
+    // B4: Wrap in try/catch — audioBufferToWav can throw on invalid/empty buffers.
+    try {
+      const wavBytes = audioBufferToWav(buffer)
+      await loadFile(wavBytes)
+    } catch (err) {
+      console.error('Failed to audition take:', err)
+      store.getState().setMicError('Failed to load take for audition')
+      return
+    }
     store.getState().selectTake(takeId)
     store.getState().setInputMode('file')
 
@@ -379,6 +416,16 @@ export function useRecording() {
 
     const engine = getEngine()
 
+    // B3: Cancel any in-flight punch-in to prevent double-splice race condition.
+    // If the user presses P again before the previous punch timeout fires,
+    // we abort the previous punch and discard its audio.
+    if (punchTimeoutRef.current) {
+      clearTimeout(punchTimeoutRef.current)
+      punchTimeoutRef.current = null
+      engine.stopRecording() // Discard the aborted punch audio
+      store.getState().setRecordingState('idle')
+    }
+
     // Start recording the punch-in (async: loads worklet module on first use)
     await engine.startRecording()
     store.getState().setRecordingState('recording')
@@ -390,7 +437,8 @@ export function useRecording() {
     // We use a timeout rather than requiring manual stop — the user knows
     // exactly how long the punch region is from the waveform markers.
     await new Promise<void>((resolve) => {
-      setTimeout(() => {
+      punchTimeoutRef.current = setTimeout(() => {
+        punchTimeoutRef.current = null
         const punchBuffer = engine.stopRecording()
         if (punchBuffer && punchBuffer.length > 0) {
           // Splice the punch-in into the original take.
@@ -444,6 +492,8 @@ export function useRecording() {
       // Clean up timers on unmount
       if (durationTimerRef.current) clearInterval(durationTimerRef.current)
       if (countInTimerRef.current) clearTimeout(countInTimerRef.current)
+      // B3: Clean up punch-in timeout on unmount
+      if (punchTimeoutRef.current) clearTimeout(punchTimeoutRef.current)
     }
   }, [])
 

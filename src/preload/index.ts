@@ -32,12 +32,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 /**
- * IPC channel names - duplicated here because the preload script
- * runs in a sandboxed context and cannot import from src/shared.
- * These MUST stay in sync with src/shared/constants.ts.
+ * IPC channel names — DUPLICATED from src/shared/constants.ts.
  *
- * TODO: In a future sprint, investigate whether electron-vite can
- * resolve shared imports in the preload build target.
+ * WHY: The preload script runs in Electron's sandboxed context and cannot
+ * import from src/shared/ (electron-vite builds preload as a separate entry).
+ * These values MUST stay in exact sync with src/shared/constants.ts.
+ *
+ * SYNC CHECK: When adding/renaming IPC channels in constants.ts, you MUST
+ * update this file too. A mismatch causes silent IPC failures (no error,
+ * just undefined return values).
+ *
+ * TODO (A5): Investigate electron-vite's `resolve.alias` or a shared build
+ * target to eliminate this duplication. See electron-vite docs on preload
+ * script configuration.
  */
 const IPC = {
   PRESET_LOAD_ALL: 'preset:load-all',
