@@ -113,10 +113,19 @@ interface EngineState {
   /** Whether monitoring is muted (no audio to speakers during mic mode) */
   monitorMuted: boolean
 
+  /** Mic input gain (software pre-amp). 0.0 to 4.0, 1.0 = unity.
+   *  Boosts the raw mic signal before volume/effects. Also affects recorded takes. */
+  micGain: number
+
   /** Whether noise suppression is enabled for mic input.
-   *  Sprint 7.2: will control RNNoise WASM AudioWorklet in the signal chain.
+   *  Sprint 7.2: controls RNNoise WASM AudioWorklet in the signal chain.
    *  (WebRTC getUserMedia constraint was tested and doesn't work in Electron.) */
   noiseSuppression: boolean
+
+  /** Noise suppression aggressiveness (VAD gate threshold).
+   *  Controls how aggressively the post-RNNoise VAD gate attenuates residual noise.
+   *  0.1 = gentle (only gate pure noise), 0.5 = moderate, 0.95 = very aggressive. */
+  noiseSuppressionAggressiveness: number
 
   /** Mic permission error message, if any */
   micError: string | null
@@ -191,8 +200,14 @@ interface EngineState {
   /** Set mic error message */
   setMicError: (error: string | null) => void
 
+  /** Set mic input gain level (software pre-amp) */
+  setMicGain: (gain: number) => void
+
   /** Toggle noise suppression for mic input (Sprint 7.2: RNNoise WASM) */
   setNoiseSuppression: (enabled: boolean) => void
+
+  /** Set noise suppression aggressiveness (VAD gate threshold, 0.1–0.95) */
+  setNoiseSuppressionAggressiveness: (value: number) => void
 
   /** Set the punch-in region (waveform selection), or null to clear */
   setPunchInRegion: (region: PunchInRegion | null) => void
@@ -248,7 +263,9 @@ export const useEngineStore = create<EngineState>((set, get) => ({
   // Mic / Recording (Sprint 7)
   micActive: false,
   monitorMuted: true,    // muted by default to prevent speaker→mic feedback
-  noiseSuppression: true, // ON by default — Sprint 7.2 will wire this to RNNoise WASM AudioWorklet
+  micGain: 1.0,          // unity — no boost by default; user adjusts if OS mic is too quiet
+  noiseSuppression: true, // ON by default — wired to RNNoise WASM AudioWorklet
+  noiseSuppressionAggressiveness: 0.5, // moderate — VAD gate threshold (0.1=gentle, 0.95=very aggressive)
   recordingState: 'idle',
   countInBeats: 0,
   countInTotal: 3,       // default 3-beat count-in
@@ -317,6 +334,8 @@ export const useEngineStore = create<EngineState>((set, get) => ({
   setRecordingDurationMs: (ms) => set({ recordingDurationMs: ms }),
   setMonitorMuted: (muted) => set({ monitorMuted: muted }),
   setMicError: (error) => set({ micError: error }),
+  setMicGain: (gain) => set({ micGain: gain }),
   setNoiseSuppression: (enabled) => set({ noiseSuppression: enabled }),
+  setNoiseSuppressionAggressiveness: (value) => set({ noiseSuppressionAggressiveness: value }),
   setPunchInRegion: (region) => set({ punchInRegion: region }),
 }))

@@ -56,7 +56,7 @@ function generateTakeId(): string {
 }
 
 export function useRecording() {
-  const { getEngine, loadFile, play, stop } = useAudioEngine()
+  const { getEngine, loadFile, play, stop, setMicGain, getInputLevel, setNoiseSuppressionAggressiveness } = useAudioEngine()
   const store = useEngineStore
 
   // ─── Local State ────────────────────────────────────────────────────
@@ -130,6 +130,13 @@ export function useRecording() {
       })
       store.getState().setMicActive(true)
       store.getState().setInputMode('mic')
+
+      // Send the current noise suppression state to the RNNoise worklet.
+      // The WASM may still be loading at this point — the processor handles
+      // enable/disable messages even before WASM is ready (it queues the state).
+      const nsState = store.getState().noiseSuppression
+      console.log(`[useRecording] startMic complete — sending initial noiseSuppression: ${nsState}`)
+      engine.setNoiseSuppression(nsState)
 
       // Re-enumerate devices now that permission is granted (labels become available)
       await refreshDevices()
@@ -347,6 +354,41 @@ export function useRecording() {
     store.getState().setMonitorMuted(newMuted)
   }, [getEngine])
 
+  // ─── Noise Suppression Sync (Sprint 7.2) ─────────────────────────────
+  // Watch the noiseSuppression store state and send enable/disable messages
+  // to the RNNoise AudioWorklet when it changes. Also sends the initial state
+  // when the mic first starts (rnnoiseAvailable flips to true after WASM loads).
+
+  const noiseSuppression = useEngineStore((s) => s.noiseSuppression)
+  const micActive = useEngineStore((s) => s.micActive)
+
+  useEffect(() => {
+    if (!micActive) {
+      console.debug('[useRecording] Noise suppression sync skipped — mic not active')
+      return
+    }
+
+    // Send the current noise suppression state to the engine.
+    // The engine forwards this as a message to the RNNoise AudioWorklet processor.
+    // If RNNoise isn't available yet (WASM still loading), the message is queued
+    // by the worklet and applied once ready.
+    console.log(`[useRecording] Syncing noise suppression → ${noiseSuppression} (micActive: ${micActive})`)
+    const engine = getEngine()
+    engine.setNoiseSuppression(noiseSuppression)
+  }, [noiseSuppression, micActive, getEngine])
+
+  // ─── Noise Suppression Aggressiveness Sync (Sprint 7.2) ─────────────
+  // Watch the aggressiveness store value and forward changes to the processor.
+  const noiseSuppressionAggressiveness = useEngineStore((s) => s.noiseSuppressionAggressiveness)
+
+  useEffect(() => {
+    if (!micActive) return
+
+    console.log(`[useRecording] Syncing noise suppression aggressiveness → ${noiseSuppressionAggressiveness}`)
+    const engine = getEngine()
+    engine.setNoiseSuppressionAggressiveness(noiseSuppressionAggressiveness)
+  }, [noiseSuppressionAggressiveness, micActive, getEngine])
+
   // ─── Take Management ────────────────────────────────────────────────
 
   /**
@@ -510,6 +552,11 @@ export function useRecording() {
     startMic,
     stopMic,
     toggleMonitorMute,
+
+    // Mic gain & input level (Sprint 7.2)
+    setMicGain,
+    getInputLevel,
+    setNoiseSuppressionAggressiveness,
 
     // Recording
     startRecording,

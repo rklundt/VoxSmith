@@ -173,6 +173,34 @@ export function useAudioEngine() {
     useEngineStore.getState().setVolume(value)
   }, [getEngine])
 
+  // ─── Mic Gain & Input Level (Sprint 7.2) ─────────────────────────────
+
+  /**
+   * Sets the mic input gain (software pre-amp).
+   * Syncs to both the AudioEngine GainNode and the Zustand store.
+   */
+  const setMicGain = useCallback((value: number) => {
+    getEngine().setMicGain(value)
+    useEngineStore.getState().setMicGain(value)
+  }, [getEngine])
+
+  /**
+   * Returns the current mic input peak level (0.0 to 1.0+).
+   * Called on every animation frame by the input level meter in RecordingPanel.
+   */
+  const getInputLevel = useCallback((): number => {
+    return getEngine().getInputLevel()
+  }, [getEngine])
+
+  /**
+   * Sets noise suppression aggressiveness (VAD gate threshold).
+   * Sends the value to the RNNoise AudioWorklet and persists in store.
+   */
+  const setNoiseSuppressionAggressiveness = useCallback((value: number) => {
+    getEngine().setNoiseSuppressionAggressiveness(value)
+    useEngineStore.getState().setNoiseSuppressionAggressiveness(value)
+  }, [getEngine])
+
   // ─── Real-Time Stage 2 Parameter Updates ──────────────────────────────
 
   const setEQBand = useCallback((index: number, gain: number, frequency: number) => {
@@ -297,6 +325,9 @@ export function useAudioEngine() {
     getCurrentTime,
     getDuration,
     setVolume,
+    setMicGain,
+    getInputLevel,
+    setNoiseSuppressionAggressiveness,
     setEQBand,
     setHighPassFrequency,
     setCompressorThreshold,

@@ -38,7 +38,7 @@
  *  P — Punch-in (future: when region selected)
  */
 
-import React, { useCallback, useEffect } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useEngineStore } from '../../stores/engineStore'
 import { useRecording } from '../../hooks/useRecording'
 import { HelpTooltip } from '../controls/HelpTooltip'
@@ -64,6 +64,9 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
     deleteTake,
     punchIn,
     getCursorTime,
+    setMicGain,
+    getInputLevel,
+    setNoiseSuppressionAggressiveness,
   } = useRecording()
 
   // Read recording state from the store
@@ -76,14 +79,45 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
   const recordingDurationMs = useEngineStore((s) => s.recordingDurationMs)
   const micError = useEngineStore((s) => s.micError)
   const monitorMuted = useEngineStore((s) => s.monitorMuted)
-  // noiseSuppression store state preserved for Sprint 7.2 (RNNoise WASM)
-  // UI toggle will be re-added when real noise suppression is implemented
+  const micGain = useEngineStore((s) => s.micGain)
+  const noiseSuppression = useEngineStore((s) => s.noiseSuppression)
+  const setNoiseSuppression = useEngineStore((s) => s.setNoiseSuppression)
+  const noiseSuppressionAggressiveness = useEngineStore((s) => s.noiseSuppressionAggressiveness)
   const punchInRegion = useEngineStore((s) => s.punchInRegion)
   const setPunchInRegion = useEngineStore((s) => s.setPunchInRegion)
   const setCountInTotal = useEngineStore((s) => s.setCountInTotal)
 
   const isRecording = recordingState === 'recording'
   const isCountingIn = recordingState === 'count-in'
+
+  // ─── Input Level Meter Animation ────────────────────────────────────
+  // Reads mic input level on every animation frame when mic is active.
+  // The level value drives a visual meter bar in the UI.
+  const [inputLevel, setInputLevel] = useState(0)
+  const levelAnimFrameRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!micActive) {
+      setInputLevel(0)
+      return
+    }
+
+    const tick = () => {
+      setInputLevel(getInputLevel())
+      levelAnimFrameRef.current = requestAnimationFrame(tick)
+    }
+    levelAnimFrameRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (levelAnimFrameRef.current !== null) {
+        cancelAnimationFrame(levelAnimFrameRef.current)
+      }
+    }
+  }, [micActive, getInputLevel])
+
+  const handleMicGainChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setMicGain(Number(e.target.value))
+  }, [setMicGain])
 
   // ─── Keyboard Shortcuts ─────────────────────────────────────────────
 
@@ -260,6 +294,125 @@ export function RecordingPanel({ onClose }: RecordingPanelProps): React.ReactEle
                 ⚠ Use headphones to avoid feedback! Speaker output will feed back into the mic, especially with reverb.
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Noise Suppression Toggle (Sprint 7.2) ──────────────── */}
+        {/* RNNoise neural-network noise suppression — removes background noise
+            (fan, AC, keyboard, room tone) from the monitoring path in real time.
+            Only shown when mic is active. Enabled by default for clean monitoring. */}
+        {micActive && (
+          <div>
+            <button
+              onClick={() => setNoiseSuppression(!noiseSuppression)}
+              aria-pressed={noiseSuppression}
+              aria-label={noiseSuppression ? 'Disable noise suppression' : 'Enable noise suppression'}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                borderRadius: '4px',
+                border: noiseSuppression ? '1px solid #50a050' : '1px solid #555',
+                backgroundColor: noiseSuppression ? '#1a3a1a' : '#1a1a2e',
+                color: noiseSuppression ? '#8f8' : '#888',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 500,
+                textAlign: 'left',
+              }}
+            >
+              {noiseSuppression ? '🛡 Noise Suppression On' : '⚠ Noise Suppression Off'}
+            </button>
+            {/* Aggressiveness slider — controls how hard the VAD gate clamps
+                on residual noise that leaks through the RNNoise neural network.
+                Only visible when suppression is enabled. */}
+            {noiseSuppression && (
+              <div style={{ marginTop: '6px' }}>
+                <label style={{ fontSize: '11px', color: '#999', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    Aggressiveness
+                    <HelpTooltip
+                      detail={TOOLTIPS.noiseSuppressionAggressiveness.detail}
+                      pairsWith={TOOLTIPS.noiseSuppressionAggressiveness.pairsWith}
+                    />
+                  </span>
+                  <span>{Math.round(noiseSuppressionAggressiveness * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={10}
+                  max={95}
+                  step={5}
+                  value={Math.round(noiseSuppressionAggressiveness * 100)}
+                  onChange={(e) => setNoiseSuppressionAggressiveness(Number(e.target.value) / 100)}
+                  style={{ width: '100%', accentColor: '#50a050' }}
+                  aria-label="Noise suppression aggressiveness"
+                />
+                <div style={{ fontSize: '10px', color: '#666', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Gentle</span>
+                  <span>Aggressive</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Mic Gain & Input Level (Sprint 7.2) ────���─────────── */}
+        {/* Software pre-amp slider with real-time input level meter.
+            Shows the user how hot their mic signal is and lets them boost it
+            if the OS mic gain is set too low. Affects both monitoring and recordings. */}
+        {micActive && (
+          <div>
+            <label style={labelWithHelpStyle}>
+              <span>Mic Gain</span>
+              <HelpTooltip
+                detail={TOOLTIPS.micGain.detail}
+                pairsWith={TOOLTIPS.micGain.pairsWith}
+              />
+            </label>
+
+            {/* Input level meter bar — visualizes raw mic signal strength */}
+            <div style={{
+              height: '6px',
+              backgroundColor: '#1a1a2e',
+              borderRadius: '3px',
+              border: '1px solid #333',
+              marginBottom: '4px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(inputLevel * 100, 100)}%`,
+                backgroundColor: inputLevel > 1.0
+                  ? '#f44'        // Red — clipping
+                  : inputLevel > 0.7
+                    ? '#fa0'      // Amber — strong signal
+                    : inputLevel > 0.1
+                      ? '#4c8'    // Green — healthy range
+                      : '#555',   // Grey — very quiet
+                borderRadius: '2px',
+                transition: 'width 50ms ease-out',
+              }} />
+            </div>
+
+            {/* Gain slider + percentage readout */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="range"
+                min="0"
+                max="4"
+                step="0.01"
+                value={micGain}
+                onChange={handleMicGainChange}
+                aria-label="Mic gain"
+                aria-valuemin={0}
+                aria-valuemax={4}
+                aria-valuenow={micGain}
+                style={{ flex: 1, height: '16px' }}
+              />
+              <span style={{ fontSize: '11px', color: '#888', minWidth: '32px', textAlign: 'right' }}>
+                {Math.round(micGain * 100)}%
+              </span>
+            </div>
           </div>
         )}
 

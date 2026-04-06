@@ -84,9 +84,9 @@ These are always visible. They have the biggest impact on how different a charac
 
 ### Volume
 
-**What it does:** Controls how loud the voice sounds during preview playback. This adjusts the monitoring level before effects are applied.
+**What it does:** Controls how loud the voice sounds during preview playback (up to 400%). This adjusts the monitoring level before effects are applied.
 
-**Important:** This does not affect the exported audio file. It is only for monitoring while you work. If your speakers are quiet, turn this up instead of cranking your system volume.
+**Important:** This does not affect the exported audio file. It is only for monitoring while you work. If your speakers are quiet, turn this up instead of cranking your system volume. Values above 200% can cause clipping — watch the level meter.
 
 **Works well with:** Compression Threshold. If you boost volume and hear clipping, lower the compression threshold to tame peaks.
 
@@ -307,6 +307,28 @@ The four bands roughly correspond to:
 ---
 
 ## Recording
+
+---
+
+### Noise Suppression
+
+**What it does:** Filters ambient noise from your mic signal using AI-based noise removal (RNNoise). Removes background noise like fan hum, air conditioning, room tone, and keyboard clicks from the monitoring path in real time.
+
+**How it works:** Enabled by default when mic monitoring starts. Toggle on/off with the button in the Recording panel. Noise suppression only affects what you hear through the effects chain — recorded takes always capture raw audio so you can re-process later.
+
+**Aggressiveness slider:** Controls how hard residual noise is gated after the neural network processes it. At gentle (low %), some natural room ambience leaks through. At aggressive (high %), non-speech frames are pushed closer to silence — great for noisy environments, but very high settings may clip the start or end of quiet words. The default (50%) is a good balance.
+
+**Tips:** Leave noise suppression on unless you specifically want to hear room noise for reference. If background noise is still noticeable, raise the aggressiveness slider. The neural network adds ~10ms of latency, which is imperceptible during monitoring.
+
+---
+
+### Mic Gain
+
+**What it does:** Software pre-amp that boosts (or cuts) the raw microphone signal. Compensates for an OS mic level that's set too low.
+
+**How it works:** The slider goes from 0% to 400%. The input level meter bar above it shows your live signal strength in real time — green is healthy, amber is strong, red means clipping. Unlike the Volume slider (which only affects monitoring), mic gain also affects recorded takes.
+
+**Tips:** If the level meter barely moves when you talk, boost the mic gain until it sits in the green range. If you see red, back off — clipping distorts the signal and can't be undone in post.
 
 ---
 

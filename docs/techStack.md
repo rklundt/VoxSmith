@@ -49,6 +49,15 @@
 - **Ships prebuilt:** Koffi includes prebuilt binaries for all platforms — no C++ build tools needed
 - **Install:** `pnpm add koffi`
 
+### RNNoise WASM (Noise Suppression)
+- **Why:** Electron/Chromium ignores the `getUserMedia` `noiseSuppression` constraint. RNNoise provides AI-based noise suppression via a neural network trained on voice audio at 48kHz.
+- **Source:** `@jitsi/rnnoise-wasm` npm package (dev dependency) provides the precompiled WASM binary (~110KB). The AudioWorklet processor (`rnnoise-processor.js`) is custom-written for VoxSmith.
+- **Used for:** Real-time background noise removal (fan, AC, keyboard, room tone) in the mic monitoring path
+- **Architecture:** Runs as an AudioWorklet processor in the renderer process. WASM binary loaded via MessagePort. Processes 480-sample frames (10ms at 48kHz) with ring buffer adaptation from 128-sample Web Audio render quanta.
+- **Signal chain:** `mic → volumeGain → [rnnoiseNode] → effectsChain → speakers`. Recorder tap captures raw audio before RNNoise for dry takes.
+- **License:** Apache-2.0 (compatible with AGPL-3.0)
+- **Install:** `pnpm add -D @jitsi/rnnoise-wasm` — postinstall script copies WASM to `src/assets/rnnoise/` and `src/renderer/public/rnnoise/`
+
 ### WaveSurfer.js
 - **Why:** Battle-tested waveform rendering for web, supports seek, regions, real-time updates
 - **Used for:** Waveform display, playhead, punch-in region selection (Phase 2)
@@ -111,7 +120,7 @@
 
 ```bash
 pnpm add electron react react-dom typescript zustand tone wavesurfer.js winston rubberband-web
-pnpm add -D electron-vite electron-builder ffmpeg-static vitest tsx @types/react @types/react-dom
+pnpm add -D electron-vite electron-builder ffmpeg-static @jitsi/rnnoise-wasm vitest tsx @types/react @types/react-dom
 ```
 
 **Note:** `electron-vite` replaces standalone Vite. Do not install `vite` separately.
@@ -138,9 +147,12 @@ Neither FFmpeg nor Rubber Band WASM binaries are committed to git. They are fetc
 The script:
 1. Locates the FFmpeg binary from `node_modules/ffmpeg-static`
 2. Copies it to `src/assets/ffmpeg/ffmpeg.exe`
-3. Locates the Rubber Band WASM binary from `node_modules/rubberband-web`
-4. Copies it to `src/assets/rubberband-wasm/`
-5. Logs success or failure for each binary
+3. Verifies Rubber Band CLI binary and shared library DLL exist in `src/assets/rubberband/`
+4. Locates the Rubber Band WASM binary from `node_modules/rubberband-web`
+5. Copies it to `src/assets/rubberband-wasm/`
+6. Locates the RNNoise WASM binary from `node_modules/@jitsi/rnnoise-wasm`
+7. Copies it to `src/assets/rnnoise/` and `src/renderer/public/rnnoise/`
+8. Logs success or failure for each binary
 
 After a fresh clone, `pnpm install` is the only step needed to make the build self-contained.
 
