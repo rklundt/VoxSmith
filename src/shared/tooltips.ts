@@ -361,10 +361,12 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
 
   bypass: {
     label: 'Bypass',
-    short: 'Switch between your processed voice and original recording.',
+    short: 'Disables all Stage 2 effects for instant A/B comparison.',
     detail:
-      'Bypass removes all effects instantly so you can compare the processed result against your raw recording. ' +
-      'Use this to judge how much the effects are contributing before committing to a preset.',
+      'Temporarily disables all Stage 2 effects (EQ, reverb, compressor, vibrato, tremolo, etc.) ' +
+      'so you hear your raw, unprocessed audio. Click again to re-enable effects. ' +
+      'Use this to quickly compare "with effects" vs "without effects" and judge how much ' +
+      'your character preset changes the voice relative to the dry signal.',
     pairsWith: ['A/B Toggle'],
     poweredBy: 'Web Audio API (GainNode routing)',
   },

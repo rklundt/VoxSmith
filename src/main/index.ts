@@ -29,7 +29,7 @@
  * RULE: Audio processing never runs here. Only file I/O, IPC, and FFmpeg.
  */
 
-import { app, BrowserWindow, session, protocol, net } from 'electron'
+import { app, BrowserWindow, Menu, session, protocol, net } from 'electron'
 import path from 'path'
 import { loadSettings } from './fileSystem/settings'
 import { initializeLogging } from './fileSystem/logManager'
@@ -155,6 +155,15 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+
+  // ── Custom Application Menu ──
+  // Only keep File and View menus — Edit, Window, and Help are not needed
+  // and clutter the menu bar for this single-purpose audio tool.
+  const menu = Menu.buildFromTemplate([
+    { role: 'fileMenu' },
+    { role: 'viewMenu' },
+  ])
+  Menu.setApplicationMenu(menu)
 
   logger.info('Main window created')
 }

@@ -374,28 +374,7 @@ export function ControlPanel(): React.ReactElement {
         </h1>
         {/* Bypass toggle - always visible for quick A/B comparison */}
         {/* X1: aria-pressed for toggle state, aria-label for screen readers */}
-        <button
-          onClick={handleBypassToggle}
-          aria-pressed={snapshot.bypassed}
-          aria-label={snapshot.bypassed ? 'Effects bypassed, click to enable' : 'Bypass all effects'}
-          style={{
-            padding: '4px 12px',
-            borderRadius: '4px',
-            border: snapshot.bypassed ? '1px solid #ff9800' : '1px solid #444',
-            backgroundColor: snapshot.bypassed ? '#332200' : '#1a1a2e',
-            color: snapshot.bypassed ? '#ff9800' : '#888',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontWeight: 600,
-          }}
-          title={TOOLTIPS.bypass.detail}
-        >
-          {snapshot.bypassed ? 'BYPASSED' : 'Bypass'}
-        </button>
       </div>
-      <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#888' }}>
-        Sprint 3 - Advanced Effects Chain
-      </p>
 
       {/* ─── File Loading ────────────────────────────────────────────── */}
       <section style={{ marginBottom: '24px' }}>
@@ -648,6 +627,28 @@ export function ControlPanel(): React.ReactElement {
             (updates live)
           </span>
           <button onClick={resetStage2} style={resetLinkStyle} aria-label="Reset Stage 2 effects">reset</button>
+          <button
+            onClick={handleBypassToggle}
+            aria-pressed={snapshot.bypassed}
+            aria-label={snapshot.bypassed ? 'Effects bypassed, click to enable' : 'Bypass all effects'}
+            style={{
+              padding: '2px 8px',
+              borderRadius: '4px',
+              border: snapshot.bypassed ? '1px solid #ff9800' : '1px solid #444',
+              backgroundColor: snapshot.bypassed ? '#332200' : '#1a1a2e',
+              color: snapshot.bypassed ? '#ff9800' : '#888',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 600,
+              marginLeft: '12px',
+            }}
+          >
+            {snapshot.bypassed ? 'BYPASSED' : 'Bypass'}
+          </button>
+          <HelpTooltip
+            detail={TOOLTIPS.bypass.detail}
+            pairsWith={TOOLTIPS.bypass.pairsWith}
+          />
         </h2>
 
         {/* Basic/Advanced mode toggle */}
