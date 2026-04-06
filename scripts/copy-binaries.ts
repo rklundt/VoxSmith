@@ -148,4 +148,40 @@ try {
   console.error('  ✗ Failed to copy Rubber Band WASM files:', err)
 }
 
+// ─── RNNoise WASM (Sprint 7.2 - real-time noise suppression) ────────────────
+// The RNNoise WASM binary is used by the rnnoise-processor AudioWorklet for
+// AI-based noise suppression in the mic signal chain. The binary is copied to
+// both src/assets/rnnoise/ (source of truth) and src/renderer/public/rnnoise/
+// (accessible at runtime via fetch from the renderer process).
+
+try {
+  const rnnoiseWasmSrc = path.join(projectRoot, 'node_modules', '@jitsi', 'rnnoise-wasm', 'dist', 'rnnoise.wasm')
+  const rnnoiseAssetsDest = path.join(projectRoot, 'src', 'assets', 'rnnoise')
+  const rnnoisePublicDest = path.join(projectRoot, 'src', 'renderer', 'public', 'rnnoise')
+
+  if (fs.existsSync(rnnoiseWasmSrc)) {
+    // Copy to assets (source of truth, for packaging)
+    fs.mkdirSync(rnnoiseAssetsDest, { recursive: true })
+    fs.copyFileSync(rnnoiseWasmSrc, path.join(rnnoiseAssetsDest, 'rnnoise.wasm'))
+
+    // Copy to renderer public (accessible via fetch at /rnnoise/rnnoise.wasm in dev)
+    fs.mkdirSync(rnnoisePublicDest, { recursive: true })
+    fs.copyFileSync(rnnoiseWasmSrc, path.join(rnnoisePublicDest, 'rnnoise.wasm'))
+
+    console.log('  ✓ RNNoise WASM copied to src/assets/rnnoise/ and src/renderer/public/rnnoise/')
+  } else {
+    // Check if already in assets (manual copy or previous install)
+    const existingAsset = path.join(rnnoiseAssetsDest, 'rnnoise.wasm')
+    if (fs.existsSync(existingAsset)) {
+      fs.mkdirSync(rnnoisePublicDest, { recursive: true })
+      fs.copyFileSync(existingAsset, path.join(rnnoisePublicDest, 'rnnoise.wasm'))
+      console.log('  ✓ RNNoise WASM found in assets, copied to renderer public')
+    } else {
+      console.warn('  ⚠ RNNoise WASM not found. Install @jitsi/rnnoise-wasm or place rnnoise.wasm in src/assets/rnnoise/')
+    }
+  }
+} catch (err) {
+  console.error('  ✗ Failed to copy RNNoise WASM:', err)
+}
+
 console.log('\n📦 Postinstall complete.\n')

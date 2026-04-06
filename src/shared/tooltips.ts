@@ -101,9 +101,10 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     label: 'Volume',
     short: 'Controls how loud the voice sounds during preview.',
     detail:
-      'Adjusts the playback loudness before effects are applied. ' +
+      'Adjusts the playback loudness before effects are applied (up to 400%). ' +
       'This does not affect the exported audio file - it is only for monitoring. ' +
-      'If your speakers are quiet, turn this up instead of cranking system volume.',
+      'If your speakers are quiet, turn this up instead of cranking system volume. ' +
+      'High values (above 200%) can cause clipping - watch the level meter.',
     pairsWith: ['Compression Threshold'],
     poweredBy: 'Web Audio API (GainNode)',
   },
@@ -393,8 +394,34 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
       'to remove background noise (fan hum, air conditioning, room tone, keyboard clicks) ' +
       'in real time before audio enters the effects chain. On by default. Turn off in a ' +
       'quiet/treated studio for the cleanest possible signal.',
-    pairsWith: ['Microphone Input', 'Monitor Mute'],
+    pairsWith: ['Microphone Input', 'Monitor Mute', 'Noise Suppression Aggressiveness'],
     poweredBy: 'RNNoise WASM (AudioWorklet)',
+  },
+
+  noiseSuppressionAggressiveness: {
+    label: 'Noise Suppression Aggressiveness',
+    short: 'Controls how hard residual noise is gated after RNNoise processing.',
+    detail:
+      'Adds a VAD-gated attenuator on top of the RNNoise neural network. ' +
+      'When the Voice Activity Detector says a frame is mostly noise, this ' +
+      'gate applies extra suppression proportional to how "noise-like" the frame is. ' +
+      'Gentle (low %) preserves natural room ambience. Aggressive (high %) pushes ' +
+      'non-speech frames closer to silence — great for noisy environments but may ' +
+      'clip the start/end of quiet words.',
+    pairsWith: ['Noise Suppression', 'Microphone Input'],
+    poweredBy: 'RNNoise WASM (VAD probability)',
+  },
+
+  micGain: {
+    label: 'Mic Gain',
+    short: 'Software pre-amp for mic input — boosts a quiet mic signal.',
+    detail:
+      'Amplifies the raw microphone signal before it reaches the volume slider and effects chain. ' +
+      'Use this if your OS mic level is set low and the input meter barely registers. ' +
+      'Unlike the Volume slider (monitoring only), mic gain also affects recorded takes. ' +
+      'High values can introduce clipping — watch the input level meter.',
+    pairsWith: ['Microphone Input', 'Volume', 'Noise Suppression'],
+    poweredBy: 'Web Audio API (GainNode)',
   },
 
   countIn: {

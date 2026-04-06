@@ -38,10 +38,11 @@
  * - Stage 1 processing (that's in main process via IPC)
  * - UI state (that's in engineStore via Zustand)
  *
- * MIC INPUT (Sprint 7):
+ * MIC INPUT (Sprint 7 + 7.2):
  * Mic audio routes through the same effects chain as file playback.
  * A MediaStreamSource replaces the AudioBufferSourceNode as the signal source.
- * Recording captures raw (pre-effects) audio via an AudioWorkletNode tap
+ * Signal chain: mic → micGain → inputAnalyser → volumeGain → [RNNoise] → effects → speakers
+ * Recording captures audio after micGain (includes gain boost) but before effects,
  * so takes can be re-processed with different settings later.
  *
  * SINGLETON PATTERN:
@@ -122,6 +123,40 @@ export class AudioEngine {
   // chain output and the analyser→destination. When muted, gain=0 silences
   // speakers but the recording tap (before effects) still captures audio.
   private monitorGain: GainNode
+
+  // ─── Mic Gain & Input Metering (Sprint 7.2) ──────────────────────────
+
+  // Software pre-amp for the mic signal. Sits between micSourceNode and volumeGain.
+  // Boosts (or cuts) the raw mic signal before it enters the effects chain.
+  // This compensates for OS-level mic gain settings that can't be controlled from
+  // Web Audio — if Windows mic is set to 50%, this slider lets the user boost in-app.
+  // Also affects the recorder tap (recorder taps AFTER this gain) so takes get the boost.
+  private micGainNode: GainNode | null = null
+
+  // AnalyserNode on the raw mic signal (after micGain, before volumeGain).
+  // Used to display input level metering in the RecordingPanel — shows the user
+  // how hot their signal is coming in, independent of the monitoring volume slider.
+  private inputAnalyser: AnalyserNode | null = null
+
+  // Reusable Float32Array for reading input level samples (avoids GC per frame).
+  // Explicit ArrayBuffer generic needed — Web Audio API's getFloatTimeDomainData()
+  // expects Float32Array<ArrayBuffer>, not Float32Array<ArrayBufferLike>.
+  private inputAnalyserData: Float32Array<ArrayBuffer> | null = null
+
+  // ─── Noise Suppression (Sprint 7.2) ──────────────────────────────────
+
+  // RNNoise AudioWorklet node — processes audio through a neural-network noise
+  // suppressor. Sits between volumeGain and effects chain input in the mic path:
+  //   mic → volumeGain → [rnnoiseNode] → effects chain → speakers
+  // The recorder tap branches off BEFORE this node (from micSourceNode) to
+  // capture raw/dry audio for later re-processing.
+  private rnnoiseNode: AudioWorkletNode | null = null
+
+  // Whether the RNNoise worklet module has been loaded (addModule is async)
+  private rnnoiseWorkletReady = false
+
+  // Whether WASM loaded successfully inside the worklet processor
+  private _rnnoiseAvailable = false
 
   // ─── Recording (Sprint 7) ───────────────────────────────────────────
 
@@ -486,10 +521,47 @@ export class AudioEngine {
    * Sets the pre-effects volume level.
    * Uses setValueAtTime for smooth, click-free updates.
    *
-   * @param value - 0.0 (silence) to 2.0 (200% boost). 1.0 = unity.
+   * @param value - 0.0 (silence) to 4.0 (400% boost). 1.0 = unity.
    */
   setVolume(value: number): void {
     this.volumeGain.gain.setValueAtTime(value, this.ctx.currentTime)
+  }
+
+  /**
+   * Sets the mic input gain (software pre-amp).
+   * Boosts (or cuts) the raw mic signal before it enters the volume slider and effects chain.
+   * Also affects recorded takes — the gain is applied before the recorder tap.
+   *
+   * Use this when the OS mic gain is set too low and the signal comes in quiet.
+   * Unlike the volume slider (which only affects monitoring), this affects recordings too.
+   *
+   * @param value - 0.0 (silence) to 4.0 (400% boost). 1.0 = unity (no change).
+   */
+  setMicGain(value: number): void {
+    if (this.micGainNode) {
+      this.micGainNode.gain.setValueAtTime(value, this.ctx.currentTime)
+    }
+  }
+
+  /**
+   * Returns the current mic input peak level as a value from 0.0 to 1.0+.
+   * Values above 1.0 indicate the input signal is clipping.
+   *
+   * Reads from an AnalyserNode positioned after mic gain but before volume/effects.
+   * Shows the true input signal strength — use this to judge whether the mic
+   * gain needs boosting. Returns 0 if mic is not active.
+   *
+   * Called on every animation frame by the RecordingPanel input level meter.
+   */
+  getInputLevel(): number {
+    if (!this.inputAnalyser || !this.inputAnalyserData) return 0
+    this.inputAnalyser.getFloatTimeDomainData(this.inputAnalyserData)
+    let peak = 0
+    for (let i = 0; i < this.inputAnalyserData.length; i++) {
+      const abs = Math.abs(this.inputAnalyserData[i])
+      if (abs > peak) peak = abs
+    }
+    return peak
   }
 
   /**
@@ -709,7 +781,82 @@ export class AudioEngine {
     // Create a source node from the mic stream and route it into the effects chain.
     // MediaStreamSourceNode is the bridge between getUserMedia and Web Audio API.
     this.micSourceNode = this.ctx.createMediaStreamSource(this.micStream)
-    this.micSourceNode.connect(this.volumeGain)
+
+    // ── Mic Gain & Input Metering (Sprint 7.2) ──
+    // Create a software pre-amp GainNode at the very front of the mic chain.
+    // This sits between the raw mic source and everything else, so both
+    // the monitoring path AND the recorder tap benefit from the gain boost.
+    // Signal chain:
+    //   mic → micGainNode → inputAnalyser ─┬─ volumeGain → [rnnoise] → effects → speakers
+    //                                       └─ recorderNode (parallel tap, gains included)
+    this.micGainNode = this.ctx.createGain()
+    this.micGainNode.gain.value = 1.0  // Unity by default — user adjusts via slider
+
+    // AnalyserNode for input level metering — reads signal strength after mic gain
+    // but before volume/effects. Lets the user see if their mic signal is too quiet.
+    this.inputAnalyser = this.ctx.createAnalyser()
+    this.inputAnalyser.fftSize = 2048
+    this.inputAnalyser.smoothingTimeConstant = 0.8
+    this.inputAnalyserData = new Float32Array(this.inputAnalyser.fftSize)
+
+    // Wire: micSourceNode → micGainNode → inputAnalyser → volumeGain
+    this.micSourceNode.connect(this.micGainNode)
+    this.micGainNode.connect(this.inputAnalyser)
+    this.inputAnalyser.connect(this.volumeGain)
+
+    // ── RNNoise Noise Suppression (Sprint 7.2) ──
+    // Insert the RNNoise AudioWorklet between volumeGain and the effects chain.
+    // Signal chain becomes:
+    //   mic → micGain → inputAnalyser → volumeGain → [rnnoiseNode] → effectsChain → speakers
+    // The RNNoise node denoises the monitoring path (what the user hears).
+    // Recording captures audio after micGain (so gain boost is included in takes).
+    try {
+      await this.ensureRnnoiseWorklet()
+
+      // Disconnect the normal volumeGain → effects connection
+      console.log('[AudioEngine] Disconnecting volumeGain → effectsChain for RNNoise insertion')
+      this.volumeGain.disconnect(this.effectsChain.input)
+
+      // Create the RNNoise worklet node
+      this.rnnoiseNode = new AudioWorkletNode(this.ctx, 'rnnoise-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 1,
+      })
+
+      // Listen for messages from the RNNoise processor
+      this.rnnoiseNode.port.onmessage = (event: MessageEvent) => {
+        const msg = event.data
+        if (msg.type === 'ready') {
+          console.log('[AudioEngine] RNNoise WASM loaded successfully')
+          this._rnnoiseAvailable = true
+        } else if (msg.type === 'error') {
+          console.error('[AudioEngine] RNNoise WASM load failed:', msg.message)
+          this._rnnoiseAvailable = false
+          // Fallback: reconnect volumeGain directly to effects (bypass RNNoise)
+          this._bypassRnnoise()
+        } else if (msg.type === 'vad') {
+          // VAD probability logged for verification; future use: auto-silence-trim
+          console.debug(`[AudioEngine] VAD: ${msg.probability.toFixed(2)}`)
+        }
+      }
+
+      // Wire: volumeGain → rnnoiseNode → effectsChain.input
+      this.volumeGain.connect(this.rnnoiseNode)
+      this.rnnoiseNode.connect(this.effectsChain.input)
+      console.log('[AudioEngine] Signal chain wired: volumeGain → rnnoiseNode → effectsChain')
+
+      // Load the WASM binary into the worklet processor
+      await this.loadRnnoiseWasm()
+
+    } catch (err) {
+      // RNNoise setup failed — fall back to direct connection (no denoising)
+      console.warn('[AudioEngine] RNNoise setup failed, falling back to passthrough:', err)
+      this._rnnoiseAvailable = false
+      // Ensure volumeGain is connected to effects chain (may have been disconnected)
+      try { this.volumeGain.disconnect(this.effectsChain.input) } catch { /* already disconnected */ }
+      this.volumeGain.connect(this.effectsChain.input)
+    }
 
     // Set up the recorder worklet as a persistent parallel tap on the mic source.
     // The recorder node stays connected for the entire mic session — starting and
@@ -738,9 +885,12 @@ export class AudioEngine {
     // Connect recorder as a parallel tap with a keep-alive to destination.
     // The keep-alive (zero-gain) ensures the browser keeps calling process()
     // on the worklet even though the output produces no audible sound.
+    // NOTE: Recorder taps from micGainNode (after mic gain, before volume/effects),
+    // so recorded takes include the mic gain boost but are pre-effects/pre-RNNoise
+    // for re-processing flexibility.
     this.recorderKeepAlive = this.ctx.createGain()
     this.recorderKeepAlive.gain.value = 0
-    this.micSourceNode.connect(this.recorderNode)
+    this.micGainNode.connect(this.recorderNode)
     this.recorderNode.connect(this.recorderKeepAlive)
     this.recorderKeepAlive.connect(this.ctx.destination)
 
@@ -775,6 +925,39 @@ export class AudioEngine {
       this.recorderKeepAlive = null
     }
 
+    // ── Clean up RNNoise node (Sprint 7.2) ──
+    // Disconnect the RNNoise worklet and restore the direct volumeGain → effects
+    // connection for file playback. The worklet module stays registered in the
+    // AudioContext — only the node is destroyed. Next mic start will create a new one.
+    if (this.rnnoiseNode) {
+      // Send destroy message so the processor frees WASM state and memory
+      console.log('[AudioEngine] Destroying RNNoise node — sending destroy, disconnecting')
+      this.rnnoiseNode.port.postMessage({ type: 'destroy' })
+      this.rnnoiseNode.port.onmessage = null
+      try { this.rnnoiseNode.disconnect() } catch { /* already disconnected */ }
+      this.rnnoiseNode = null
+      this._rnnoiseAvailable = false
+    } else {
+      console.debug('[AudioEngine] stopMicInput — no RNNoise node to clean up')
+    }
+
+    // Restore the standard signal path: volumeGain → effectsChain.input
+    // (RNNoise may have been in between, or the direct connection may already exist)
+    try { this.volumeGain.disconnect(this.effectsChain.input) } catch { /* wasn't connected */ }
+    this.volumeGain.connect(this.effectsChain.input)
+    console.log('[AudioEngine] Signal chain restored: volumeGain → effectsChain (direct)')
+
+    // ── Clean up mic gain and input analyser (Sprint 7.2) ──
+    if (this.inputAnalyser) {
+      this.inputAnalyser.disconnect()
+      this.inputAnalyser = null
+      this.inputAnalyserData = null
+    }
+    if (this.micGainNode) {
+      this.micGainNode.disconnect()
+      this.micGainNode = null
+    }
+
     // Disconnect the mic source from the audio graph
     if (this.micSourceNode) {
       this.micSourceNode.disconnect()
@@ -791,6 +974,147 @@ export class AudioEngine {
 
     // Restore monitor output for file playback — unmute regardless of mic mute setting
     this.monitorGain.gain.setValueAtTime(1, this.ctx.currentTime)
+  }
+
+  // ─── Noise Suppression Controls (Sprint 7.2) ────────────────────────
+
+  /** Whether RNNoise WASM loaded successfully and noise suppression is available */
+  get rnnoiseAvailable(): boolean {
+    return this._rnnoiseAvailable
+  }
+
+  /**
+   * Enables or disables noise suppression on the mic monitoring path.
+   *
+   * Sends a message to the RNNoise AudioWorklet processor to toggle
+   * denoising on/off. When disabled, the processor passes audio through
+   * unchanged (zero CPU cost). When enabled, audio goes through the
+   * RNNoise neural network to strip background noise.
+   *
+   * Has no effect if RNNoise is not available (WASM failed to load).
+   *
+   * @param enabled - true to activate noise suppression, false for passthrough
+   */
+  setNoiseSuppression(enabled: boolean): void {
+    if (!this.rnnoiseNode) {
+      console.warn(`[AudioEngine] setNoiseSuppression(${enabled}) called but rnnoiseNode is null — message not sent`)
+      return
+    }
+
+    // Send enable/disable message to the worklet processor.
+    // The processor handles this immediately on the audio thread —
+    // no latency or gap in audio output during the toggle.
+    const msgType = enabled ? 'enable' : 'disable'
+    this.rnnoiseNode.port.postMessage({ type: msgType })
+    console.log(`[AudioEngine] Noise suppression → sent '${msgType}' to processor (rnnoiseAvailable: ${this._rnnoiseAvailable})`)
+  }
+
+  /**
+   * Sets the aggressiveness of noise suppression (VAD gate threshold).
+   *
+   * RNNoise does the neural-network denoising, but some residual noise leaks
+   * through. The VAD gate adds a second layer: frames with low voice-activity
+   * probability get additional attenuation proportional to how "noise-like"
+   * they are. Higher threshold = more aggressive gating.
+   *
+   * @param value - Threshold from 0.1 (gentle) to 0.95 (very aggressive).
+   *   0.3 = gentle — only gate obvious pure-noise frames
+   *   0.5 = moderate (default) — good balance of suppression vs naturalness
+   *   0.7 = aggressive — gate anything that isn't clearly speech
+   */
+  setNoiseSuppressionAggressiveness(value: number): void {
+    if (!this.rnnoiseNode) {
+      console.warn(`[AudioEngine] setNoiseSuppressionAggressiveness(${value}) called but rnnoiseNode is null`)
+      return
+    }
+    this.rnnoiseNode.port.postMessage({ type: 'set-aggressiveness', value })
+    console.log(`[AudioEngine] Noise suppression aggressiveness → ${value.toFixed(2)}`)
+  }
+
+  /**
+   * Ensures the RNNoise AudioWorklet module is loaded.
+   *
+   * Like ensureRecorderWorklet(), this must complete before creating any
+   * AudioWorkletNode with the 'rnnoise-processor' name. Called lazily on
+   * first mic start — the processor JS file is loaded once and stays
+   * registered for the lifetime of the AudioContext.
+   */
+  private async ensureRnnoiseWorklet(): Promise<void> {
+    if (this.rnnoiseWorkletReady) {
+      console.debug('[AudioEngine] RNNoise worklet module already loaded (cached)')
+      return
+    }
+
+    // Load the RNNoise processor module from the public directory.
+    // In dev: Vite serves /rnnoise-processor.js from src/renderer/public/
+    // In production: it's bundled into the renderer output directory.
+    console.log('[AudioEngine] Loading RNNoise worklet module...')
+    await this.ctx.audioWorklet.addModule('/rnnoise-processor.js')
+    this.rnnoiseWorkletReady = true
+    console.log('[AudioEngine] RNNoise worklet module loaded')
+  }
+
+  /**
+   * Fetches the RNNoise WASM binary and sends it to the worklet processor.
+   *
+   * The WASM binary contains the RNNoise neural network model (~110KB).
+   * It's fetched as an ArrayBuffer and sent to the processor via MessagePort,
+   * where it's compiled with WebAssembly.instantiate(). The processor stays
+   * in passthrough mode until this completes successfully.
+   *
+   * The processor will respond with { type: 'ready' } on success or
+   * { type: 'error', message } on failure — handled by the port.onmessage
+   * listener set up in startMicInput().
+   */
+  private async loadRnnoiseWasm(): Promise<void> {
+    if (!this.rnnoiseNode) {
+      console.warn('[AudioEngine] loadRnnoiseWasm called but rnnoiseNode is null — skipping')
+      return
+    }
+
+    // Fetch the WASM binary from the public directory.
+    // In dev: Vite serves /rnnoise/rnnoise.wasm from src/renderer/public/rnnoise/
+    // In production: it's bundled into the renderer output directory.
+    console.log('[AudioEngine] Fetching RNNoise WASM binary...')
+    const fetchStart = performance.now()
+    const response = await fetch('/rnnoise/rnnoise.wasm')
+    if (!response.ok) {
+      throw new Error(`Failed to fetch RNNoise WASM: ${response.status} ${response.statusText}`)
+    }
+
+    const wasmBinary = await response.arrayBuffer()
+    const fetchMs = (performance.now() - fetchStart).toFixed(1)
+    console.log(`[AudioEngine] RNNoise WASM fetched: ${wasmBinary.byteLength} bytes in ${fetchMs}ms`)
+
+    // Send the WASM binary to the worklet processor for compilation.
+    // We transfer (not copy) the ArrayBuffer to avoid duplicating ~110KB in memory.
+    // After transfer, the original ArrayBuffer becomes detached (zero-length).
+    this.rnnoiseNode.port.postMessage(
+      { type: 'load-wasm', wasm: wasmBinary },
+      [wasmBinary]  // Transferable: moves ownership to the worklet thread
+    )
+    console.log('[AudioEngine] RNNoise WASM binary transferred to worklet processor')
+  }
+
+  /**
+   * Fallback: bypasses RNNoise by reconnecting volumeGain directly to the
+   * effects chain input. Called when WASM loading fails or the processor
+   * reports an error. Audio continues flowing without noise suppression.
+   */
+  private _bypassRnnoise(): void {
+    console.warn('[AudioEngine] Bypassing RNNoise — falling back to direct signal path')
+    // Disconnect the broken RNNoise node from the signal path
+    if (this.rnnoiseNode) {
+      try { this.rnnoiseNode.disconnect() } catch { /* already disconnected */ }
+      try { this.volumeGain.disconnect(this.rnnoiseNode) } catch { /* already disconnected */ }
+      this.rnnoiseNode = null
+      console.warn('[AudioEngine] RNNoise node disconnected and nulled')
+    }
+
+    // Reconnect volumeGain directly to the effects chain (standard non-RNNoise path)
+    try { this.volumeGain.disconnect(this.effectsChain.input) } catch { /* wasn't connected */ }
+    this.volumeGain.connect(this.effectsChain.input)
+    console.warn('[AudioEngine] RNNoise bypassed — volumeGain → effectsChain restored')
   }
 
   // ─── Recording (Sprint 7) ────────────────────────────────────────────
@@ -891,6 +1215,7 @@ export class AudioEngine {
    * and closes the AudioContext. Call on app unmount.
    */
   async dispose(): Promise<void> {
+    // stopMicInput() handles RNNoise cleanup, recorder cleanup, and mic release
     this.stopMicInput()
     this.stop()
     this.effectsChain.dispose()

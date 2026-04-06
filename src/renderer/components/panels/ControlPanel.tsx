@@ -497,13 +497,13 @@ export function ControlPanel(): React.ReactElement {
             <input
               type="range"
               min="0"
-              max="2"
+              max="4"
               step="0.01"
               value={volume}
               onChange={handleVolumeChange}
               aria-label="Volume"
               aria-valuemin={0}
-              aria-valuemax={2}
+              aria-valuemax={4}
               aria-valuenow={volume}
               style={{ width: '120px' }}
             />
