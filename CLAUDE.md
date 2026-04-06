@@ -120,7 +120,20 @@ src/
     hooks/                   # Custom React hooks - bridge between UI and engine
     engine/                  # AudioEngine, Web Audio API, Tone.js, Rubber Band WASM
       AudioEngine.ts         # Central audio engine class
-      EffectsChain.ts        # All effects nodes wired together
+      EffectsChain.ts        # Slim orchestrator — wires effect modules, forwards params
+      effects/               # Individual effect modules (Sprint 7.4 modularization)
+        EffectModule.ts      # Base interface (input/output/dispose)
+        HighPassEffect.ts    # High-pass filter (rumble removal)
+        SpectralTiltEffect.ts # Low shelf + high shelf pair (brightness/darkness)
+        EQEffect.ts          # 4-band parametric EQ
+        CompressorEffect.ts  # Dynamics compression
+        VibratoEffect.ts     # Pitch oscillation (Tone.js)
+        TremoloEffect.ts     # Volume oscillation (Tone.js)
+        VocalFryEffect.ts    # AM synthesis (sub-audio fry)
+        BreathinessEffect.ts # Spectral reshaping (airy voice)
+        Breathiness2Effect.ts # Vocal processing method (close-mic air)
+        ReverbEffect.ts      # Convolution reverb (Tone.js + manual wet/dry)
+        index.ts             # Barrel export
       RubberBandProcessor.ts # Sprint 1 spike wrapper (to be replaced by IPC pipeline in Sprint 2)
       MicInput.ts            # getUserMedia and live mic routing
     stores/                  # Zustand stores - global app state
@@ -385,3 +398,7 @@ VoxSmith uses sprint-based semantic versioning:
 | Preset file safety | Atomic write (temp + rename) | Prevents data loss from crash during save |
 | Noise suppression | RNNoise WASM (Sprint 7.2) | Electron ignores getUserMedia noiseSuppression constraint. RNNoise runs as AudioWorklet in signal chain for real-time noise removal. |
 | Recording architecture | Persistent AudioWorklet tap | Recorder node created once at mic start, stays connected. Start/stop recording is a message, not node creation — eliminates per-recording latency overhead. |
+| Spectral tilt | Low shelf + high shelf pair (Sprint 7.4) | Single slider tilts entire spectrum bright/dark. Highest-impact addition for perceived speaker age/size. Placed after high-pass, before EQ. |
+| Distortion types | WaveShaperNode with curve presets (Sprint 7.5) | Soft saturation, hard clip, bitcrusher, asymmetric curves. One node, multiple character archetypes (gruff, robot, creature). After compressor, before vibrato. |
+| Independent formant band control | Parametric formant filter bank: 3-4 BiquadFilterNodes in peaking mode (Sprint 7.6) | Independent F1/F2/F3/F4 control (frequency, gain, Q per band). Complements Rubber Band formant scale — Stage 1 shifts all formants together, Stage 2 bank reshapes individual peaks. After EQ, before compressor. Subsumes single resonance filter. |
+| Vocal register simulation | Macro control mapping to spectral tilt + breathiness (Sprint 7.7) | Single "register" slider from chest (0.0) to head (1.0). Coordinates spectral tilt and breathiness wet/dry. No new audio nodes — adjusts existing parameters. Depends on Sprint 7.4 (Spectral Tilt). |

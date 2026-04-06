@@ -1174,6 +1174,478 @@ const setNoiseSuppression = useEngineStore((s) => s.setNoiseSuppression)
 
 ---
 
+### Sprint 7.3
+
+In this mini sprint, we did a few tweaks like adjust ui spacing and moved some items.
+
+
+---
+
+### Sprint 7.4 - Spectral Tilt (Voice Brightness/Darkness)
+
+**Goal:** Add a single "Spectral Tilt" slider that tilts the entire frequency spectrum, enabling dramatic shifts in perceived speaker age, size, and character type. This is the highest-impact, lowest-effort addition for making voices sound like genuinely different people.
+
+**Impact: High | Effort: Low**
+
+**What it is:** Spectral tilt is a continuous gain slope applied across the entire frequency spectrum. Positive tilt boosts high frequencies relative to low, creating a brighter, thinner, younger-sounding voice. Negative tilt boosts low frequencies relative to high, creating a darker, warmer, older or larger-sounding voice. This is fundamentally different from EQ — EQ adjusts specific frequency bands, while spectral tilt reshapes the overall balance between brightness and warmth across the whole spectrum.
+
+**Why it helps create different characters:** Real human voices differ dramatically in spectral tilt. Children and small characters have bright, harmonically rich voices (positive tilt). Large, older, or authoritative characters have darker voices with more energy in the low end (negative tilt). Combined with pitch and formant shifting, spectral tilt is the "missing dimension" that transforms "you with effects" into "a different person." Many professional voice changers use this as their primary character age/size knob.
+
+---
+
+#### Design Research: Spectral Tilt in Voice Acoustics
+
+**What spectral tilt means acoustically:** Every voice has a natural energy distribution across the frequency spectrum. When you analyze a voice's frequency content, the balance between low-frequency energy and high-frequency energy forms a slope — this slope is the spectral tilt. A voice with more low-frequency energy relative to high has a "steep" or "negative" tilt (darker sound). A voice with relatively more high-frequency energy has a "shallow" or "positive" tilt (brighter sound).
+
+**Why spectral tilt varies between people:** Spectral tilt is primarily determined by:
+- **Vocal cord mass and tension** — Heavier, looser cords (adult males, larger bodies) produce more low harmonics, creating negative tilt. Lighter, tighter cords (children, smaller bodies) produce more high harmonics, creating positive tilt.
+- **Subglottal pressure** — More forceful speech (shouting, commanding) flattens the tilt (more highs). Quiet, gentle speech steepens the tilt (more lows dominate).
+- **Age** — Older voices lose high-frequency energy due to vocal cord stiffening, producing steeper negative tilt.
+
+**How spectral tilt differs from EQ:** EQ adjusts specific frequency bands independently. Spectral tilt applies a continuous slope across the entire spectrum — it's a global rebalancing of the bright-to-dark axis. You can think of it as a "see-saw" centered around a mid frequency: tilt one way and lows go up while highs go down (darker), tilt the other way and highs go up while lows go down (brighter). EQ is surgical; tilt is holistic.
+
+**Character archetypes enabled by spectral tilt:**
+- **Strong negative tilt** (-8 to -10): Giant, ancient dragon, booming deity, very large creature
+- **Moderate negative tilt** (-3 to -7): Warrior, king, mature authority figure, large male
+- **Neutral** (0): Natural speaking voice, no age/size modification
+- **Moderate positive tilt** (+3 to +7): Young woman, teenager, small creature, pixie
+- **Strong positive tilt** (+8 to +10): Child, tiny fairy, insectoid creature, very small being
+
+---
+
+#### Implementation Approach
+
+**Recommended implementation: Dual shelf filter pair.** Use two `BiquadFilterNode` instances:
+1. A **low shelf** filter (boosts or cuts below a crossover frequency)
+2. A **high shelf** filter (boosts or cuts above a crossover frequency)
+
+The tilt parameter controls opposing gains on the two shelves:
+```
+// Tilt value: -10 (dark) to +10 (bright)
+// Crossover point: ~1000Hz (roughly where the spectral balance pivots)
+lowShelf.type = 'lowshelf'
+lowShelf.frequency.value = 1000
+lowShelf.gain.value = -tiltAmount  // Negative tilt → boost lows
+
+highShelf.type = 'highshelf'
+highShelf.frequency.value = 1000
+highShelf.gain.value = tiltAmount   // Negative tilt → cut highs
+```
+
+When tilt is negative (darker): low shelf gain goes positive (boost lows), high shelf gain goes negative (cut highs). When tilt is positive (brighter): the opposite. When tilt is 0: both gains are 0, no effect.
+
+**Why dual shelf filters are the right choice:**
+- `BiquadFilterNode` is native Web Audio — zero dependencies, zero latency, hardware-accelerated
+- The shelf filter pair is the standard technique for spectral tilt in audio engineering
+- `AudioParam` automation means smooth, click-free parameter changes in real time
+- The crossover frequency (1000Hz) can be hardcoded initially but made configurable later if needed
+- This exact pattern (two BiquadFilterNodes with opposing gains) is used by professional voice changers
+
+**Signal chain insertion point:** After the high-pass filter, before the EQ bands. This ensures the tilt shapes the overall spectrum before per-band EQ refinements. The high-pass has already removed sub-bass rumble, so the tilt operates on clean voice signal.
+
+---
+
+**User Stories:**
+- As a user, I can adjust a Spectral Tilt slider so that my voice sounds fundamentally brighter or darker, enabling younger/smaller or older/larger character voices
+- As a user, I can combine spectral tilt with pitch and formant shifting so that I can create characters that sound like genuinely different people, not just pitched versions of myself
+- As a user, spectral tilt updates in real time so that I can hear the effect immediately while adjusting
+- As a user, spectral tilt is saved as part of character presets so that each character's brightness/darkness is remembered
+- As a user, spectral tilt has a wet/dry mix so that I can blend between my natural spectral balance and the tilted version
+- As a user, I can use negative tilt to make my voice sound like a larger, older, or more authoritative character so that warriors, dragons, and kings sound distinct from my natural voice
+- As a user, I can use positive tilt to make my voice sound like a smaller, younger, or more delicate character so that fairies, children, and sprites sound distinct from my natural voice
+- As a developer, spectral tilt is implemented as a low shelf + high shelf BiquadFilterNode pair so that it uses native Web Audio with no additional dependencies
+- As a developer, spectral tilt follows the existing effects chain architecture and uses AudioParam for smooth real-time parameter changes so that no clicks or pops occur during adjustment
+
+**Acceptance Criteria:**
+- Spectral Tilt slider visible in Advanced mode effects section
+- Range: -10 to +10 (negative = darker, positive = brighter, 0 = neutral)
+- Audible difference when moving from negative to positive tilt
+- Updates in real time without audio dropout
+- Saved/loaded with character presets
+- Wet/dry mix available
+- Tooltip explains the effect in plain language
+- No impact on existing effects when tilt is at 0
+
+**QA Checklist:**
+- [ ] Set tilt to -10 — voice sounds noticeably darker/warmer
+- [ ] Set tilt to +10 — voice sounds noticeably brighter/thinner
+- [ ] Set tilt to 0 — no audible difference from bypass
+- [ ] Combine tilt (-5) + formant shift (+0.5) — sounds like a smaller, younger character
+- [ ] Combine tilt (+5) + formant shift (-0.5) — sounds like a larger, older character
+- [ ] Adjust tilt while playing — no clicks, pops, or dropouts
+- [ ] Save preset with tilt value, reload — tilt restored correctly
+- [ ] Wet/dry at 50% — blended effect audible
+- [ ] Reset Stage 2 — tilt returns to 0
+- [ ] Tooltip text sourced from `tooltips.ts`
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.4`
+- All Sprint 0-7.3 regression items re-verified
+
+---
+
+### Sprint 7.5 - Distortion / Saturation Types (Character Archetypes)
+
+**Goal:** Add a distortion/saturation effect with multiple curve types, unlocking entire character archetypes that are currently impossible — gruff warriors, robots, goblins, radio transmissions, and demonic creatures.
+
+**Impact: High for character variety | Effort: Low**
+
+**What it is:** Different distortion curves applied to the audio signal via a WaveShaperNode. Unlike simple overdrive, this provides multiple distinct waveshaping curves that each produce a fundamentally different tonal character. The key insight is that one Web Audio node with different curve presets unlocks a wide range of character archetypes.
+
+**Why it helps create different characters:** Many iconic character voices rely on non-linear distortion:
+- **Soft saturation** — warm tube-like overdrive for gruff old men, battle-hardened warriors, or gravelly narrators
+- **Hard clipping** — aggressive edge for shouting soldiers, angry bosses, or drill sergeants
+- **Bitcrusher** — quantization noise for robots, AI characters, radio transmissions, or retro sci-fi
+- **Asymmetric waveshaping** — uneven harmonic generation for goblins, gremlins, creature rasp, or insectoid voices
+None of these character types are achievable with the current effects chain. Adding distortion with selectable types is the fastest way to expand the character range.
+
+**Implementation approach:** Web Audio API's `WaveShaperNode` accepts a custom Float32Array curve that defines the input→output transfer function. Different mathematical functions produce different distortion characters. A dropdown selects the curve type, and a "drive" slider controls intensity. Wet/dry mix blends the distorted signal with the clean original.
+
+**Signal chain insertion point:** After the compressor, before the vibrato. This ensures the distortion operates on a dynamics-controlled signal (preventing unexpected volume spikes) and that modulation effects (vibrato, tremolo) operate on the already-distorted signal for more natural results.
+
+---
+
+**User Stories:**
+- As a user, I can select from multiple distortion types (soft saturation, hard clip, bitcrusher, asymmetric) so that I can create gruff, robotic, creature, or aggressive character voices
+- As a user, I can adjust the distortion drive/intensity so that I can control how much character the effect adds, from subtle grit to extreme transformation
+- As a user, I can blend distortion with my clean voice via wet/dry mix so that I can add just a hint of grit without overwhelming the signal
+- As a user, distortion type and drive are saved as part of character presets so that each character's texture is remembered
+- As a user, I can hear the distortion update in real time as I adjust the drive or switch types so that I can dial in the right amount
+- As a developer, distortion is implemented using Web Audio's WaveShaperNode so that no additional dependencies or AudioWorklets are required
+
+**Acceptance Criteria:**
+- Distortion section visible in Advanced mode effects section
+- Dropdown with at least 4 curve types: Soft Saturation, Hard Clip, Bitcrusher, Asymmetric
+- Drive slider (0–100%) controls intensity
+- Wet/dry mix available
+- Each curve type produces audibly distinct character
+- Updates in real time without dropout
+- Saved/loaded with character presets
+- Tooltip explains each distortion type in plain language
+
+**QA Checklist:**
+- [ ] Soft saturation at 50% drive — voice sounds warmer/grittier, not harsh
+- [ ] Hard clip at 50% drive — voice has aggressive edge, like shouting into a mic
+- [ ] Bitcrusher at 50% drive — voice has digital/robotic quality
+- [ ] Asymmetric at 50% drive — voice has uneven, creature-like rasp
+- [ ] Drive at 0% — no audible distortion regardless of type
+- [ ] Drive at 100% — extreme effect, clearly transformed
+- [ ] Wet/dry at 25% — subtle texture addition, character voice not overwhelmed
+- [ ] Switch between types while playing — no audio dropout or crash
+- [ ] Save preset with distortion settings, reload — type + drive + wetdry restored
+- [ ] Reset Stage 2 — distortion off (drive 0, type reset)
+- [ ] Tooltip text sourced from `tooltips.ts`
+- [ ] Combined with formant shift — gruff dwarf (low formant + saturation) sounds distinct from robot (bitcrusher + neutral formant)
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.5`
+- All Sprint 0-7.4 regression items re-verified
+
+---
+
+### Sprint 7.6 - Independent Formant Band Control (Parametric Formant Filter Bank)
+
+**Goal:** Add a parametric formant filter bank with independently controllable F1, F2, F3, and F4 bands so that users can reshape the spectral identity of their voice at the formant level — enabling male↔female conversion, age simulation, creature voices with impossible formant combinations, and fine-grained nasality control.
+
+**Impact: High | Effort: Moderate**
+
+---
+
+#### Design Research: Human Formants and Why Individual Control Matters
+
+**What formants are:** When a human speaks, the vocal cords produce a buzz-like signal rich in harmonics. That signal passes through the vocal tract (throat, mouth, nasal cavity), which acts as a series of resonant chambers. Each chamber amplifies certain frequency ranges — these amplified peaks are called **formants**. The shape and size of the vocal tract determines where the formant peaks fall, and this is the primary mechanism that distinguishes one voice from another.
+
+**The four principal formants:**
+
+| Formant | Typical Range | What It Controls | Acoustic Role |
+|---|---|---|---|
+| **F1** | 300–800 Hz | Vowel height (open vs closed mouth) | Low F1 = closed vowels (ee, oo). High F1 = open vowels (ah, aa). Shifting F1 changes perceived mouth openness. |
+| **F2** | 800–2500 Hz | Vowel frontness (tongue position front vs back) | High F2 = front vowels (ee, ay). Low F2 = back vowels (oo, oh). F2 is the strongest cue for vowel identity. |
+| **F3** | 2500–3500 Hz | Speaker identity and rhoticity | F3 distinguishes individual speakers more than vowels. Low F3 = rhotic (/r/) coloring. F3 is a primary forensic voice ID marker. |
+| **F4** | 3500–4500 Hz | Voice quality and "ring" | F4 contributes to the singer's formant / vocal projection. Less perceptually critical than F1-F3 but adds clarity and "presence." |
+
+**Why Rubber Band's formant scale is not enough alone:** Rubber Band's `setFormantScale()` shifts ALL formants together as a single unit — it scales the entire spectral envelope up or down. This is useful for coarse gender/age shifts (e.g., shift everything up = smaller vocal tract = female/child). But it cannot:
+- Move F1 up while moving F2 down (impossible formant combo for alien/creature voices)
+- Boost F1 and F2 close together without affecting F3 (nasality simulation)
+- Independently widen or narrow individual formant peaks (changing perceived vocal tract shape)
+- Create formant relationships that don't exist in any human vocal tract
+
+**How the two systems complement each other:**
+- **Stage 1 (Rubber Band, offline):** Coarse formant shift — moves all formants together as a unit. Think of it as resizing the entire vocal tract.
+- **Stage 2 (Formant Bank, real-time):** Fine individual reshaping — moves, boosts, cuts, and widens/narrows each formant independently. Think of it as sculpting the vocal tract shape.
+
+The user applies Rubber Band's formant scale first (Stage 1) for the coarse shift, then uses the formant bank (Stage 2) to fine-tune individual formant positions. This two-level approach gives maximum flexibility.
+
+**Character voice examples achievable with independent formant control:**
+- **Male → Female:** Raise F1 by ~20%, raise F2 by ~15%, raise F3 by ~10% (simulates smaller vocal tract). Combined with Rubber Band formant scale +0.2 for the coarse shift, the bank fine-tunes the ratios.
+- **Adult → Child:** Raise all formants significantly (F1 +30%, F2 +25%, F3 +20%), combined with pitch up. The bank lets you exaggerate certain formants more than others for realism.
+- **Nasality (nerdy wizard, whiny villain):** Boost F1 and bring F2 closer to F1 (narrow the F1-F2 gap). This simulates coupling between oral and nasal cavities. Cut F3 slightly for a more closed, pinched quality.
+- **Booming hero / giant:** Cut F1, widen F2 bandwidth (lower Q), boost F3 for projection. Simulates a large, open vocal tract.
+- **Alien / insectoid:** Set F1 and F2 to frequencies that never occur in human speech (e.g., F1 at 200Hz, F2 at 3000Hz — an impossible gap). No human vocal tract produces this, so it sounds immediately non-human.
+- **Elderly voice:** Narrow all formant bandwidths (higher Q values) and add slight frequency instability. Aged vocal tracts have less muscle control, producing tighter, less stable resonances.
+
+---
+
+#### Implementation Approach
+
+**Core architecture:** 3-4 `BiquadFilterNode` instances in series, each set to `"peaking"` mode. Each node represents one formant band (F1, F2, F3, optionally F4). Each band has three independently controllable parameters:
+
+1. **Center Frequency** — where the formant peak sits. This is the primary control for "moving" a formant.
+2. **Gain (dB)** — boost or cut at the center frequency. Boost emphasizes the formant; cut suppresses it.
+3. **Q (bandwidth)** — how narrow or wide the resonance peak is. High Q = tight, resonant, pronounced peak. Low Q = broad, subtle, natural-sounding.
+
+**Web Audio API implementation detail:**
+```
+// Each formant band is a BiquadFilterNode in "peaking" mode
+const f1Node = audioContext.createBiquadFilter()
+f1Node.type = 'peaking'
+f1Node.frequency.value = 500    // F1 center frequency (Hz)
+f1Node.gain.value = 6           // Boost by 6dB
+f1Node.Q.value = 5              // Moderate bandwidth
+
+// Chain: input → F1 → F2 → F3 → F4 → output
+// Each node's parameters are independently controllable via AudioParam
+```
+
+**Why `BiquadFilterNode` "peaking" mode is correct:** The "peaking" (also called "parametric EQ") mode of `BiquadFilterNode` boosts or cuts a bell-shaped region around the center frequency. This is exactly what formant manipulation requires — surgically targeting a specific frequency region without affecting the rest of the spectrum. The existing 4-band EQ in the effects chain also uses `BiquadFilterNode`, so this is a proven pattern in the codebase.
+
+**Parameter ranges for each band:**
+
+| Parameter | F1 Range | F2 Range | F3 Range | F4 Range |
+|---|---|---|---|---|
+| Frequency | 200–1000 Hz | 600–3000 Hz | 2000–4000 Hz | 3000–5000 Hz |
+| Gain | -12 to +12 dB | -12 to +12 dB | -12 to +12 dB | -12 to +12 dB |
+| Q | 1–15 | 1–15 | 1–15 | 1–15 |
+
+Note: Frequency ranges overlap deliberately — this allows formants to be pushed into each other's territory for extreme character voices. The ranges are wide enough to cover all human vocal tract variations and extend beyond for non-human effects.
+
+**Wet/dry mix:** A single wet/dry control for the entire formant bank (not per-band). At 0% the bank is bypassed; at 100% the full formant reshaping is applied. This lets users dial in subtle formant coloring without full commitment.
+
+**UI layout (Advanced mode):** A "Formant Bank" section with 3 or 4 sub-sections (F1, F2, F3, F4). Each sub-section has:
+- A frequency knob or slider
+- A gain knob or slider
+- A Q knob or slider
+- A per-band enable/disable toggle (so unused bands don't add processing overhead)
+
+F4 is optional in the UI — it can be hidden behind an "F4 (Advanced)" toggle since it has less perceptual impact than F1-F3. This keeps the default UI from being overwhelming.
+
+**Preset storage:** Each formant band's three parameters (frequency, gain, Q) plus the enable/disable state are stored in the preset JSON. The wet/dry mix for the bank is stored as a single value. This means a preset fully captures the formant reshaping configuration.
+
+**Signal chain insertion point:** After the EQ bands, before the compressor. This is the same position as the old resonance filter it replaces. Rationale:
+- Formant shaping is frequency-domain manipulation, so it belongs with the other frequency-shaping nodes (high-pass, spectral tilt, EQ)
+- The compressor should come after all frequency shaping to tame any resonance peaks before modulation effects
+- Placing it after EQ means the user's broad tonal adjustments are applied first, then formant-specific sculpting refines the result
+
+**Relationship to the existing 4-band EQ:** The EQ and formant bank serve different purposes and do not conflict:
+- **EQ** = broad tonal shaping (bass, low-mid, high-mid, treble). Wide Q values, musical frequency centers. Think "tone knobs."
+- **Formant Bank** = surgical formant manipulation. Narrow Q values, speech-specific frequency centers. Think "vocal tract reshaping."
+The user uses EQ to set the overall tone, then the formant bank to sculpt the voice's identity characteristics.
+
+---
+
+**User Stories:**
+- As a user, I can independently adjust the center frequency of F1, F2, and F3 formant bands so that I can move individual formant peaks to reshape my vocal identity without affecting other formants
+- As a user, I can boost or cut each formant band's gain independently so that I can emphasize certain formant peaks (making them more prominent) or suppress them (making them less audible)
+- As a user, I can adjust the Q (bandwidth) of each formant band independently so that I can make formant peaks narrow and resonant (for pronounced, artificial effects) or wide and subtle (for natural-sounding shifts)
+- As a user, I can optionally enable an F4 band for additional voice quality control so that I have access to the full formant range when creating advanced character voices
+- As a user, I can enable or disable individual formant bands so that unused bands don't add processing overhead and so that I can isolate the effect of a single band while tuning
+- As a user, I can blend the formant bank effect with my clean signal via a wet/dry mix so that I can add subtle formant coloring without full commitment to extreme settings
+- As a user, I can combine Stage 1 Rubber Band formant scale (coarse all-together shift) with Stage 2 formant bank (fine individual reshaping) so that I get both broad gender/age shifts and detailed vocal tract sculpting
+- As a user, formant bank settings are saved as part of character presets so that each character's unique formant profile is remembered and restored
+- As a user, formant bank parameter changes update in real time so that I can hear the effect of moving a single formant while adjusting
+- As a user, I can create nasality effects by boosting F1 and bringing F2 closer to F1 so that I can make nerdy, whiny, or insectoid character voices
+- As a user, I can create impossible formant combinations (e.g., very low F1 with very high F2) so that I can design alien, creature, or otherworldly voices that no human vocal tract can produce
+- As a developer, the formant bank is implemented using standard BiquadFilterNode "peaking" mode so that no additional dependencies are required and the pattern is consistent with the existing EQ implementation
+
+**Acceptance Criteria:**
+- Formant Bank section visible in Advanced mode effects section with F1, F2, F3 bands (F4 optional/toggleable)
+- Each band has independent frequency, gain (-12 to +12dB), and Q (1-15) controls
+- Frequency ranges: F1 (200-1000Hz), F2 (600-3000Hz), F3 (2000-4000Hz), F4 (3000-5000Hz)
+- Each band can be individually enabled/disabled
+- Audible formant reshaping when adjusting individual bands
+- No conflict with existing 4-band EQ (both active simultaneously)
+- Complements Rubber Band formant scale (Stage 1 coarse + Stage 2 fine)
+- Wet/dry mix for entire formant bank
+- Updates in real time without audio dropout
+- Saved/loaded with character presets (per-band frequency, gain, Q, enabled state + bank wet/dry)
+- Tooltip explains each band's role in plain language (F1 = mouth openness, F2 = tongue position, F3 = speaker identity, F4 = voice quality)
+
+**QA Checklist:**
+- [ ] F1 boost +12dB at 500Hz — voice sounds more open-mouthed, vowels shift toward "ah"
+- [ ] F1 cut -12dB at 500Hz — voice sounds closed, muffled
+- [ ] F2 boost +8dB at 1800Hz — voice sounds brighter, more forward
+- [ ] F2 cut -8dB at 1800Hz — voice sounds darker, more back-of-throat
+- [ ] F3 boost +6dB at 3000Hz — voice has more clarity and "presence"
+- [ ] F3 cut -6dB at 3000Hz — voice loses individual speaker character
+- [ ] All bands at 0dB gain — no audible difference from bypass
+- [ ] Sweep F1 frequency from 200 to 1000Hz with +6dB gain — resonance peak moves audibly through vowel space
+- [ ] High Q (15) on F2 — tight, pronounced, artificial resonance
+- [ ] Low Q (1) on F2 — broad, subtle, natural-sounding
+- [ ] Nasality test: F1 +6dB at 500Hz, F2 moved to 800Hz with +4dB — nasal quality audible
+- [ ] Alien voice: F1 at 200Hz +8dB, F2 at 2800Hz +8dB — impossible gap sounds non-human
+- [ ] Male→female: raise F1 to 600Hz, F2 to 2000Hz, F3 to 3200Hz all with +4dB — voice sounds higher/smaller
+- [ ] Combined with Rubber Band formant scale +0.3 — coarse shift + fine bank adjustments stack correctly
+- [ ] Combined with Stage 2 EQ adjustments — both active, no conflicts or cancellation
+- [ ] Disable F2 band — only F1 and F3 affect audio
+- [ ] Enable/disable F4 — toggles fourth band processing
+- [ ] Adjust while playing — no clicks, pops, or dropouts
+- [ ] Save preset with formant bank settings, reload — all per-band params restored (freq, gain, Q, enabled)
+- [ ] Wet/dry at 50% — blended effect audible, less extreme than 100%
+- [ ] Wet/dry at 0% — formant bank fully bypassed, no processing artifact
+- [ ] Reset Stage 2 — all formant bands return to default (0dB gain, default frequencies)
+- [ ] Tooltip text sourced from `tooltips.ts`
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.6`
+- All Sprint 0-7.5 regression items re-verified
+
+---
+
+### Sprint 7.7 - Vocal Register Simulation (Chest-to-Head Voice Transition)
+
+**Goal:** Add a unified "vocal register" control that simulates the transition from chest voice to head voice by coordinating spectral tilt, breathiness, and harmonic-to-noise ratio — giving each character a distinct vocal placement that goes beyond pitch and formants.
+
+**Impact: Medium-High | Effort: Moderate**
+
+**Depends on Sprint 7.4:** This sprint relies on the Spectral Tilt node from Sprint 7.4 being implemented. The register control adjusts spectral tilt as one of its coordinated parameters. If Sprint 7.4 is not complete, the spectral tilt component of register simulation will not function.
+
+---
+
+#### Design Research: Vocal Registers and Why They Matter for Character Voices
+
+**What vocal registers are:** Human voices operate in different "registers" depending on how the vocal cords vibrate. The two primary registers are:
+
+- **Chest voice:** The vocal cords vibrate along their full length and thickness. Produces a rich, resonant, powerful tone with strong low harmonics. The speaker feels vibration in their chest. Most adult speaking voices are in chest register.
+- **Head voice:** The vocal cords thin and stretch, vibrating primarily along their edges. Produces a lighter, breathier, more ethereal tone with stronger high harmonics relative to the fundamental. The speaker feels vibration in their head/sinuses.
+
+Between these extremes is a continuous spectrum. Real humans shift registers fluidly — a deep-voiced villain speaks in full chest voice, while a nervous fairy character might speak almost entirely in head voice.
+
+**Why register matters for character identity:** Two characters can have the same pitch, the same formant positions, and the same effects — but if one is in chest voice and the other in head voice, they sound like completely different people. Register determines:
+- **Perceived size and power** — Chest voice sounds larger, more authoritative, more grounded
+- **Perceived age and fragility** — Head voice sounds younger, more delicate, more ethereal
+- **Perceived emotion** — Chest voice conveys confidence and calm; head voice conveys excitement, fear, or vulnerability
+- **Character archetype** — Warriors, kings, dragons = chest. Fairies, sprites, elderly mystics = head.
+
+**The three acoustic components of register:**
+
+1. **Spectral tilt** (Sprint 7.4 — already planned): The balance between low and high frequency energy. Chest voice has a steep spectral tilt (strong lows, weak highs). Head voice has a flatter tilt (lows and highs more balanced). This is the most prominent acoustic marker of register.
+
+2. **Breathiness / aspiration noise**: Head voice produces more turbulent airflow at the glottis because the vocal cords don't close completely. This adds noise energy across the spectrum — a "breathy" or "airy" quality. Chest voice has less breath noise because the cords close firmly. VoxSmith already has a breathiness effect (white noise mixed with the signal via wet/dry).
+
+3. **Harmonic-to-Noise Ratio (HNR)**: Related to breathiness but distinct. In chest voice, the harmonic structure is clear and dominant — you can hear distinct overtones. In head voice, the harmonic structure is less defined and more noise is present between harmonics. This can be simulated by mixing filtered noise at harmonic frequencies or by modulating the existing breathiness amount.
+
+**How the register control works as a combined parameter:**
+
+A single "Register" slider (or knob) from 0.0 (full chest) to 1.0 (full head) that simultaneously adjusts:
+
+| Register Value | Spectral Tilt | Breathiness Mix | Description |
+|---|---|---|---|
+| 0.0 (Chest) | Strong negative tilt (boost lows, cut highs) | Very low (0-5%) | Full chest voice: rich, booming, powerful |
+| 0.25 (Low Chest) | Moderate negative tilt | Low (5-15%) | Relaxed male speaking voice |
+| 0.5 (Neutral) | Flat tilt (no adjustment) | Moderate (15-25%) | Natural balanced speaking voice |
+| 0.75 (Head) | Moderate positive tilt (cut lows, boost highs) | Higher (25-40%) | Light, airy, slightly ethereal |
+| 1.0 (Full Head) | Strong positive tilt (strong high boost) | High (40-60%) | Full head voice: breathy, light, fairy-like |
+
+The register control does NOT replace the individual spectral tilt and breathiness controls — it provides a coordinated macro that adjusts both in tandem. Users can still override individual controls after setting the register position.
+
+---
+
+#### Implementation Approach
+
+**Architecture:** The register control is a "macro" parameter that maps a single 0.0–1.0 value to multiple underlying effect parameters. It does not create new audio nodes — it adjusts existing ones:
+
+1. **Spectral Tilt adjustment** — Maps register value to the spectral tilt node's bright/dark parameter (Sprint 7.4). Chest = dark, head = bright.
+2. **Breathiness adjustment** — Maps register value to the existing breathiness wet/dry mix. Chest = low mix, head = high mix.
+
+**Implementation detail:**
+```
+// Register value 0.0 (chest) to 1.0 (head)
+function applyRegister(registerValue: number): void {
+  // Map register to spectral tilt: -6dB (chest) to +6dB (head)
+  const tiltAmount = (registerValue - 0.5) * 12  // Range: -6 to +6
+  spectralTiltNode.setTilt(tiltAmount)
+
+  // Map register to breathiness wet/dry: 0.02 (chest) to 0.55 (head)
+  const breathinessMix = 0.02 + (registerValue * 0.53)
+  effectsChain.setWetDry('breathiness', breathinessMix)
+}
+```
+
+**Why this is a "macro" and not a new audio node:** The acoustic components of register simulation are already present in the effects chain (spectral tilt from Sprint 7.4, breathiness from existing effects). What's missing is the coordinated control that adjusts them together. Adding a new node would duplicate processing that already exists. The macro approach is both simpler and more efficient.
+
+**Interaction with manual controls:** When the user adjusts the register slider, it sets spectral tilt and breathiness to their coordinated values. If the user then manually adjusts spectral tilt or breathiness individually, those manual overrides take precedence. The register slider shows where it was last set but the individual controls show the actual current values. This gives power users full manual control while giving casual users a single "register" knob.
+
+**Parameter mapping curves:** The mapping from register value to underlying parameters is not necessarily linear. Perceptually, the chest-to-head transition is more dramatic in the upper range (0.7–1.0) than in the lower range (0.0–0.3). The implementation may use a slight curve (e.g., quadratic easing) on the breathiness mapping so that extreme head voice sounds appropriately breathy without the mid-range being too airy. This can be tuned during QA.
+
+**UI layout (Advanced mode):** A "Vocal Register" knob or horizontal slider in the effects section, positioned near the spectral tilt and breathiness controls since it coordinates both. Labels at the extremes: "Chest" on the left, "Head" on the right. A tooltip explains what register simulation does in character terms, not acoustic terms.
+
+**Preset storage:** The register value (0.0–1.0) is stored in the preset JSON. On preset load, `applyRegister()` is called which sets the underlying parameters. If the user has also manually adjusted spectral tilt or breathiness in the preset, those manual values are loaded AFTER the register macro, so manual overrides are preserved.
+
+**Signal chain:** No new nodes are added. The register control adjusts:
+- SpectralTiltNode (already in chain from Sprint 7.4, after HighPassFilter, before EQ)
+- Breathiness wet/dry mix (already in chain, existing effect)
+
+---
+
+**User Stories:**
+- As a user, I can adjust a single Vocal Register slider from "Chest" to "Head" so that my character's voice sounds like it's coming from deep in the chest (powerful, grounded) or high in the head (light, ethereal, breathy) without manually coordinating multiple individual effects
+- As a user, I can set a character to full chest voice so that warriors, villains, dragons, and authoritative characters have a rich, booming vocal quality with strong low harmonics and minimal breathiness
+- As a user, I can set a character to full head voice so that fairies, sprites, nervous characters, and ethereal beings have a light, airy, breathy vocal quality with more high-frequency energy
+- As a user, I can set the register to intermediate positions so that I can create voices that are "slightly chest" or "slightly head" for nuanced character differentiation — not every character needs to be at an extreme
+- As a user, I can combine vocal register with formant shifting (Stage 1) and formant bank (Stage 2) so that a female fairy character has raised formants AND head voice, while a male warrior has lowered formants AND chest voice
+- As a user, I can manually override the spectral tilt or breathiness after setting the register so that I have full control when the coordinated defaults don't match my creative vision
+- As a user, vocal register settings are saved as part of character presets so that each character's register placement is remembered and restored
+- As a user, the register slider updates in real time so that I can sweep through the chest-to-head range and hear the transition while adjusting
+- As a developer, the register control is implemented as a macro that maps to existing spectral tilt and breathiness parameters so that no new audio nodes are created and the implementation is efficient
+- As a developer, the register macro's parameter mapping curves are tunable so that perceptual transitions sound natural across the full range
+
+**Acceptance Criteria:**
+- Vocal Register slider/knob visible in Advanced mode effects section
+- Range: 0.0 (full chest) to 1.0 (full head), default at 0.5 (neutral)
+- Adjusting register simultaneously changes spectral tilt and breathiness wet/dry
+- Chest extreme (0.0): voice sounds noticeably richer, deeper, more resonant, less breathy
+- Head extreme (1.0): voice sounds noticeably lighter, airier, more breathy, brighter
+- Neutral (0.5): no significant spectral tilt or breathiness change from default
+- Manual spectral tilt or breathiness adjustments override the register-set values
+- Updates in real time without audio dropout
+- Saved/loaded with character presets
+- Tooltip explains the effect in character terms ("warrior vs fairy")
+- No new audio nodes created — macro adjusts existing parameters only
+
+**QA Checklist:**
+- [ ] Register at 0.0 (chest) — voice sounds rich, deep, minimal breath noise
+- [ ] Register at 1.0 (head) — voice sounds light, breathy, higher frequency emphasis
+- [ ] Register at 0.5 (neutral) — no audible difference from default settings
+- [ ] Sweep register 0.0→1.0 slowly — smooth perceptual transition, no sudden jumps
+- [ ] Sweep register 1.0→0.0 — reverse transition sounds equally smooth
+- [ ] Register at 0.0 + formant shift -0.3 — deep warrior character
+- [ ] Register at 1.0 + formant shift +0.3 — ethereal fairy character
+- [ ] Register at 0.0 + formant bank (low F1, wide F2) — booming giant character
+- [ ] Register at 0.8 + formant bank (high F1, high F2) — nervous sprite character
+- [ ] Set register to 0.2, then manually adjust breathiness up — breathiness overrides register-set value
+- [ ] Set register to 0.8, then manually adjust spectral tilt down — tilt overrides register-set value
+- [ ] Set register, manual override, then move register slider again — register re-applies coordinated values
+- [ ] Adjust while playing — no clicks, pops, or dropouts
+- [ ] Save preset with register at 0.3, reload — register and underlying params restored
+- [ ] Save preset with register at 0.7 + manual breathiness override — both restored correctly
+- [ ] Reset Stage 2 — register returns to 0.5 (neutral)
+- [ ] Tooltip text sourced from `tooltips.ts`
+- [ ] Combined with distortion (Sprint 7.5) — chest + distortion = gruff orc, head + no distortion = fairy
+
+**Definition of Done:**
+- All acceptance criteria met
+- QA checklist passed and results recorded in `testResults/`
+- `package.json` version set to `0.7.7`
+- All Sprint 0-7.6 regression items re-verified
+
+---
+
 ### Sprint 8 - Polish, Settings, and Packaging
 
 **Goal:** Ship-ready build. Settings UI, error handling, onboarding, and `.exe` packaging.
@@ -1219,7 +1691,7 @@ const setNoiseSuppression = useEngineStore((s) => s.setNoiseSuppression)
 - All acceptance criteria met
 - QA checklist passed and results recorded in `testResults/`
 - `package.json` version set to `1.0.0`
-- Full regression suite (all Sprint 0-7.2 items) passed on packaged build
+- Full regression suite (all Sprint 0-7.7 items) passed on packaged build
 - Packaged `.exe` tested on clean Windows 11 machine
 
 ---
@@ -1227,7 +1699,7 @@ const setNoiseSuppression = useEngineStore((s) => s.setNoiseSuppression)
 ## Phase 1+2 Exit Criteria
 
 Phase 1+2 is complete when all of the following are true:
-- All Sprint 0-8 QA checklists pass (including 7.1 and 7.2)
+- All Sprint 0-8 QA checklists pass (including 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7)
 - Full regression suite passes on the packaged `.exe` build
 - At least one real character preset has been created end-to-end (save, load, export)
 - No unresolved `error` level log entries during full QA pass
@@ -1291,6 +1763,11 @@ Tracked here so they are not forgotten. Not scheduled for any sprint.
 
 | Enhancement | Notes |
 |---|---|
+| Independent formant band control | **Scheduled as Sprint 7.6.** Parametric formant filter bank with independently controllable F1/F2/F3/F4 bands. |
+| Subharmonic generator | Synthesize frequencies one octave below the fundamental for demon, giant, dragon voices. Needs AudioWorklet with pitch detection (autocorrelation) + sine synthesis. Medium-high impact, moderate effort. |
+| Vocal register simulation | **Scheduled as Sprint 7.7.** Macro control coordinating spectral tilt + breathiness for chest-to-head voice transition. |
+| Ring modulation | Multiply voice by a sine wave for alien, robotic, or demonic inharmonic sidebands. Low freq (5-30Hz) = warble, high freq (100-500Hz) = extreme transformation. Easy via OscillatorNode + GainNode. Niche but dramatic. |
+| Convolution with vocal impulse responses | Short IRs (~50-100ms) for whisper texture, megaphone, telephone, walkie-talkie, PA system. Easy via ConvolverNode. Ship a handful of vocal IRs as bundled assets. |
 | Auto-update via `electron-updater` | Deferred post-Phase 3. Manual download/reinstall acceptable for v1 personal tool. |
 | Code signing (EV certificate) | Required for production distribution to avoid SmartScreen warnings. Budget and lead time needed. |
 | CI/CD Stage 2 (GitHub Actions) | Implement when project reaches stable feature completion. See `docs/cicd.md`. |

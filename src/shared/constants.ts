@@ -93,6 +93,7 @@ export const DEFAULT_ENGINE_SNAPSHOT: EngineSnapshot = {
   compressorThreshold: -24,  // dB - moderate threshold
   compressorRatio: 4,        // 4:1 - moderate compression
   highPassFrequency: 80,     // Hz - just removes sub-bass rumble
+  spectralTilt: 0,           // 0 = neutral (no tilt). Negative = darker, positive = brighter.
   wetDryMix: {
     vibrato: 1.0,            // full wet when enabled (depth controls intensity)
     tremolo: 1.0,
@@ -100,6 +101,7 @@ export const DEFAULT_ENGINE_SNAPSHOT: EngineSnapshot = {
     breathiness: 1.0,
     breathiness2: 1.0,
     reverb: 0.0,             // 0% wet by default - matches reverbAmount=0 so no reverb at startup
+    spectralTilt: 1.0,       // Full wet by default - tilt amount controls intensity directly
   },
   bypassed: false,
 }
@@ -139,7 +141,7 @@ import type { EffectName } from './types'
  * any future UI that needs to iterate over the effect set.
  */
 export const EFFECT_NAMES: readonly EffectName[] = [
-  'vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb',
+  'spectralTilt', 'vibrato', 'tremolo', 'vocalFry', 'breathiness', 'breathiness2', 'reverb',
 ] as const
 
 /**

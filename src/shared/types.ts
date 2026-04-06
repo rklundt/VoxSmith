@@ -33,7 +33,7 @@
  * These are the effects with parallel dry routing in the effects chain.
  * Effects without wet/dry (HighPass, EQ, Compressor, RubberBand) are inline.
  */
-export type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'breathiness2' | 'reverb'
+export type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'breathiness2' | 'reverb' | 'spectralTilt'
 
 /**
  * A single band in the 4-band EQ.
@@ -74,6 +74,7 @@ export interface EngineSnapshot {
   compressorThreshold: number            // dB (negative, e.g. -24)
   compressorRatio: number                // ratio (e.g. 4 means 4:1)
   highPassFrequency: number              // Hz cutoff
+  spectralTilt: number                   // -10 (dark/warm) to +10 (bright/thin), 0 = neutral
   wetDryMix: Record<EffectName, number>  // 0.0 (full dry) to 1.0 (full wet)
   bypassed: boolean
 }

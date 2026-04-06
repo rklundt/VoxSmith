@@ -91,6 +91,7 @@ export function ControlPanel(): React.ReactElement {
     stop,
     setVolume,
     setHighPassFrequency,
+    setSpectralTilt,
     setCompressorThreshold,
     setCompressorRatio,
     setVibrato,
@@ -247,6 +248,12 @@ export function ControlPanel(): React.ReactElement {
     setHighPassFrequency(value)
   }, [updateParam, setHighPassFrequency])
 
+  const handleSpectralTiltChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value)
+    updateParam('spectralTilt', value)
+    setSpectralTilt(value)
+  }, [updateParam, setSpectralTilt])
+
   const handleCompThresholdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(e.target.value)
     updateParam('compressorThreshold', value)
@@ -300,9 +307,11 @@ export function ControlPanel(): React.ReactElement {
 
     // Inline effects
     updateParam('highPassFrequency', d.highPassFrequency)
+    updateParam('spectralTilt', d.spectralTilt)
     updateParam('compressorThreshold', d.compressorThreshold)
     updateParam('compressorRatio', d.compressorRatio)
     setHighPassFrequency(d.highPassFrequency)
+    setSpectralTilt(d.spectralTilt)
     setCompressorThreshold(d.compressorThreshold)
     setCompressorRatio(d.compressorRatio)
 
@@ -333,6 +342,7 @@ export function ControlPanel(): React.ReactElement {
     setWetDry('vocalFry', d.wetDryMix.vocalFry)
     setWetDry('breathiness', d.wetDryMix.breathiness)
     setWetDry('breathiness2', d.wetDryMix.breathiness2)
+    setWetDry('spectralTilt', d.wetDryMix.spectralTilt)
 
     // EQ bands
     updateParam('eq', d.eq)
@@ -341,7 +351,7 @@ export function ControlPanel(): React.ReactElement {
     // Bypass off
     updateParam('bypassed', false)
     setBypass(false)
-  }, [updateParam, setHighPassFrequency, setCompressorThreshold, setCompressorRatio,
+  }, [updateParam, setHighPassFrequency, setSpectralTilt, setCompressorThreshold, setCompressorRatio,
       setReverb, setVibrato, setTremolo, setVocalFry, setBreathiness, setBreathiness2,
       setWetDry, setEQBand, setBypass])
 
@@ -781,6 +791,20 @@ export function ControlPanel(): React.ReactElement {
               onChange={handleHighPassChange}
             />
 
+            {/* ── Spectral Tilt (Sprint 7.4) ────────────────────────── */}
+            {/* Tilts the entire frequency spectrum brighter or darker.
+                Negative = darker/warmer (large, old characters).
+                Positive = brighter/thinner (small, young characters).
+                0 = neutral, no modification.
+                Placed in the signal chain after high-pass, before EQ. */}
+            <SliderControl
+              label="Spectral Tilt"
+              value={snapshot.spectralTilt}
+              min={-10} max={10} step={0.5}
+              unit="" tooltipKey="spectralTilt"
+              onChange={handleSpectralTiltChange}
+            />
+
             {/* ── Compressor ────────────────────────────────────────── */}
             <SliderControl
               label="Comp Threshold"
@@ -849,6 +873,7 @@ export function ControlPanel(): React.ReactElement {
     breathiness: snapshot.breathiness,
     breathiness2: snapshot.breathiness2,
     highPass: snapshot.highPassFrequency,
+    spectralTilt: snapshot.spectralTilt,
     compThreshold: snapshot.compressorThreshold,
     compRatio: snapshot.compressorRatio,
   },
