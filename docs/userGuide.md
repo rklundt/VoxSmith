@@ -193,6 +193,20 @@ The four bands roughly correspond to:
 
 ---
 
+### Spectral Tilt
+
+**What it does:** Tilts the entire frequency spectrum brighter or darker using a single slider. Negative values boost bass and cut treble (darker, warmer). Positive values cut bass and boost treble (brighter, thinner). This is different from EQ — it reshapes the overall spectral balance rather than targeting specific bands.
+
+**Range:** -10 (very dark) to +10 (very bright). 0 = neutral.
+
+**How it sounds:** Negative tilt makes your voice sound like it comes from a larger, older body — think giant, warrior, ancient dragon. Positive tilt makes it sound smaller, younger, lighter — think fairy, child, sprite. Combined with pitch and formant shifting, spectral tilt is often the "missing ingredient" that transforms a processed voice into a convincingly different character.
+
+**Works well with:** Pitch, Formant, and EQ. Spectral Tilt handles the broad bright/dark axis; EQ fine-tunes specific frequency bands after the tilt is applied.
+
+**Powered by:** Web Audio API (BiquadFilterNode low shelf + high shelf pair)
+
+---
+
 ### High-Pass Filter
 
 **What it does:** Removes low frequency sounds below a set point. Anything below the cutoff frequency is filtered out.
@@ -396,11 +410,11 @@ The four bands roughly correspond to:
 
 | Goal | Key Features to Combine |
 |---|---|
-| Sound like a large, imposing character | Low Pitch + Low Formant + Low Reverb/Large Room |
-| Sound like a small creature | High Pitch + High Formant + Fast Speed |
-| Sound ancient or powerful | Low Pitch + Slow Speed + High Reverb + Slight Tremolo |
-| Sound like a ghost or spirit | High Breathiness + High Reverb + Low Formant |
-| Sound young and nervous | High Pitch + Fast Speed + Fast Vibrato (shallow) |
-| Sound raspy and villainous | Low Pitch + Vocal Fry + Compression |
-| Sound like a radio transmission | High-Pass Filter (400Hz+) + Low Reverb |
+| Sound like a large, imposing character | Low Pitch + Low Formant + Negative Spectral Tilt + Low Reverb/Large Room |
+| Sound like a small creature | High Pitch + High Formant + Positive Spectral Tilt + Fast Speed |
+| Sound ancient or powerful | Low Pitch + Negative Spectral Tilt + Slow Speed + High Reverb + Slight Tremolo |
+| Sound like a ghost or spirit | High Breathiness + High Reverb + Low Formant + Positive Spectral Tilt |
+| Sound young and nervous | High Pitch + Positive Spectral Tilt + Fast Speed + Fast Vibrato (shallow) |
+| Sound raspy and villainous | Low Pitch + Negative Spectral Tilt + Vocal Fry + Compression |
+| Sound like a radio transmission | High-Pass Filter (400Hz+) + Positive Spectral Tilt + Low Reverb |
 | Clean up a noisy home recording | Noise Gate + Compression + Normalize on Export |

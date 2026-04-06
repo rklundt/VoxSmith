@@ -38,12 +38,13 @@ VoxSmith's audio processing is split into three stages based on what can run in 
  (Main process, Rubber Band CLI)      (Renderer, Web Audio API)            (Main process, FFmpeg)
  ┌──────────────────────────────┐     ┌──────────────────────────────┐     ┌───────────────────────┐
  │ Pitch (semitones)            │     │ HighPassFilter               │     │ Noise gate            │
- │ Formant (independent ratio)  │────▶│ 4-Band EQ                    │────▶│ Normalization         │
- │ Tempo / Speed                │ IPC │ Compressor                   │ IPC │ Bit depth conversion  │
- │                              │     │ Vibrato       ← wet/dry     │     │ Silence padding       │
- │ [Apply] button in UI         │     │ Tremolo       ← wet/dry     │     │ Format (.wav)         │
- │ ████░░░ progress indicator   │     │ Vocal Fry     ← wet/dry     │     └───────────────────────┘
- └──────────────────────────────┘     │ Breathiness   ← wet/dry     │
+ │ Formant (independent ratio)  │────▶│ SpectralTilt  ← wet/dry     │────▶│ Normalization         │
+ │ Tempo / Speed                │ IPC │ 4-Band EQ                    │ IPC │ Bit depth conversion  │
+ │                              │     │ Compressor                   │     │ Silence padding       │
+ │ [Apply] button in UI         │     │ Vibrato       ← wet/dry     │     │ Format (.wav)         │
+ │ ████░░░ progress indicator   │     │ Tremolo       ← wet/dry     │     └───────────────────────┘
+ └──────────────────────────────┘     │ Vocal Fry     ← wet/dry     │
+                                      │ Breathiness   ← wet/dry     │
                                       │ Reverb        ← wet/dry     │
                                       │ Gain (output)               │
                                       │                              │
@@ -115,7 +116,11 @@ Input Source (switchable)
         ↓
   HighPassFilterNode (BiquadFilterNode)
         ↓
+  SpectralTiltNode (low shelf + high shelf)  ← wet/dry pair (Sprint 7.4)
+        ↓
   EQNode (4x BiquadFilterNode)
+        ↓
+  FormantBankNode (3-4x BiquadFilterNode peaking: F1/F2/F3/F4) ← wet/dry pair (Sprint 7.6)
         ↓
   CompressorNode (DynamicsCompressorNode)
         ↓
@@ -127,6 +132,8 @@ Input Source (switchable)
   │  setWetDry(effect, mix) controls wetGain and dryGain levels.      │
   │  mix=1.0: full wet. mix=0.0: full dry (effect bypassed).          │
   └────────────────────────────────────────────────────────────────────┘
+        ↓
+  DistortionNode (WaveShaperNode)            ← wet/dry pair (Sprint 7.5)
         ↓
   VibratoNode (Tone.js Vibrato)           ← wet/dry pair
         ↓
@@ -203,6 +210,7 @@ class AudioEngine {
   setEQ(band: 0|1|2|3, gain: number, freq: number): void
   setCompressor(threshold: number, ratio: number): void
   setHighPass(frequency: number): void
+  setSpectralTilt(tilt: number): void       // -10 (dark) to +10 (bright), Sprint 7.4
   setWetDry(effect: EffectName, mix: number): void
   setBypass(bypassed: boolean): void
 
@@ -250,6 +258,7 @@ interface EngineSnapshot {
   compressorThreshold: number          // dB
   compressorRatio: number              // ratio (e.g. 4 = 4:1)
   highPassFrequency: number            // Hz
+  spectralTilt: number                 // -10 (dark) to +10 (bright), 0 = neutral
   wetDryMix: Record<EffectName, number> // 0.0 (dry) to 1.0 (wet) per effect
   bypassed: boolean
 }
@@ -259,7 +268,7 @@ interface EQBand {
   frequency: number // center frequency Hz
 }
 
-type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'reverb'
+type EffectName = 'vibrato' | 'tremolo' | 'vocalFry' | 'breathiness' | 'reverb' | 'spectralTilt'
 ```
 
 ### Preset

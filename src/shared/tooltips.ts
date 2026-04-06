@@ -234,6 +234,18 @@ export const TOOLTIPS: Record<string, TooltipContent> = {
     poweredBy: 'Web Audio API (BiquadFilterNode)',
   },
 
+  spectralTilt: {
+    label: 'Spectral Tilt',
+    short: 'Makes your voice sound bigger/older or smaller/younger.',
+    detail:
+      'Tilts the entire frequency spectrum bright or dark. ' +
+      'Negative values boost bass and cut highs — sounds like a larger, older, more powerful character (warrior, dragon, king). ' +
+      'Positive values cut bass and boost highs — sounds like a smaller, younger, lighter character (fairy, child, sprite). ' +
+      'This is different from EQ — it reshapes the overall spectral balance rather than targeting specific frequency bands.',
+    pairsWith: ['Pitch', 'Formant', '4-Band EQ'],
+    poweredBy: 'Web Audio API (BiquadFilterNode low shelf + high shelf)',
+  },
+
   wetDry: {
     label: 'Wet/Dry Mix',
     short: 'Blends the processed signal with the original.',

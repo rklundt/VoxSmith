@@ -588,6 +588,17 @@ export class AudioEngine {
   }
 
   /**
+   * Updates the spectral tilt (voice brightness/darkness).
+   * Range: -10 (very dark/warm — giant, dragon) to +10 (very bright/thin — fairy, child).
+   * 0 = neutral (no spectral modification).
+   * Uses a low shelf + high shelf pair with opposing gains to tilt the entire
+   * frequency spectrum. Placed after high-pass, before EQ in the signal chain.
+   */
+  setSpectralTilt(tilt: number): void {
+    this.effectsChain.setSpectralTilt(tilt)
+  }
+
+  /**
    * Updates the compressor threshold.
    */
   setCompressorThreshold(db: number): void {

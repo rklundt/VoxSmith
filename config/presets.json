@@ -55,7 +55,7 @@
         }
       ],
       "engineSnapshot": {
-        "pitch": 24,
+        "pitch": 4,
         "formant": 0,
         "reverbAmount": 0,
         "reverbRoomSize": 0.5,
@@ -99,7 +99,7 @@
         "bypassed": false
       },
       "createdAt": "2026-04-02T14:57:56.833Z",
-      "updatedAt": "2026-04-02T16:00:10.211Z",
+      "updatedAt": "2026-04-06T21:03:22.112Z",
       "portraitPath": "portraits\\mnhln2ap-khbqm5.png",
       "notes": "ma' Notes!",
       "portraitUri": "portrait://mnhln2ap-khbqm5.png"
@@ -210,6 +210,114 @@
       },
       "createdAt": "2026-04-02T15:59:30.186Z",
       "updatedAt": "2026-04-02T15:59:30.186Z"
+    },
+    {
+      "id": "mnn8ez05-yqnhrb",
+      "name": "fdsaad",
+      "category": "",
+      "emotionVariants": [],
+      "engineSnapshot": {
+        "pitch": 0,
+        "formant": 0,
+        "reverbAmount": 0,
+        "reverbRoomSize": 0.5,
+        "speed": 1,
+        "vibratoRate": 5,
+        "vibratoDepth": 0,
+        "tremoloRate": 4,
+        "tremoloDepth": 0,
+        "vocalFryIntensity": 0,
+        "breathiness": 0,
+        "breathiness2": 0,
+        "eq": [
+          {
+            "gain": 0,
+            "frequency": 200
+          },
+          {
+            "gain": 0,
+            "frequency": 800
+          },
+          {
+            "gain": 0,
+            "frequency": 2500
+          },
+          {
+            "gain": 0,
+            "frequency": 8000
+          }
+        ],
+        "compressorThreshold": -24,
+        "compressorRatio": 4,
+        "highPassFrequency": 80,
+        "spectralTilt": 5,
+        "wetDryMix": {
+          "vibrato": 1,
+          "tremolo": 1,
+          "vocalFry": 1,
+          "breathiness": 1,
+          "breathiness2": 1,
+          "reverb": 0,
+          "spectralTilt": 0.46
+        },
+        "bypassed": false
+      },
+      "createdAt": "2026-04-06T13:34:21.362Z",
+      "updatedAt": "2026-04-06T13:34:21.362Z"
+    },
+    {
+      "id": "mnnohhyn-l5uog0",
+      "name": "fdafdfdsfads2",
+      "category": "",
+      "emotionVariants": [],
+      "engineSnapshot": {
+        "pitch": 0,
+        "formant": 0,
+        "reverbAmount": 0,
+        "reverbRoomSize": 0.5,
+        "speed": 1,
+        "vibratoRate": 5,
+        "vibratoDepth": 0,
+        "tremoloRate": 4,
+        "tremoloDepth": 0,
+        "vocalFryIntensity": 0,
+        "breathiness": 0,
+        "breathiness2": 0,
+        "eq": [
+          {
+            "gain": 0,
+            "frequency": 200
+          },
+          {
+            "gain": 0,
+            "frequency": 800
+          },
+          {
+            "gain": 0,
+            "frequency": 2500
+          },
+          {
+            "gain": 0,
+            "frequency": 8000
+          }
+        ],
+        "compressorThreshold": -24,
+        "compressorRatio": 4,
+        "highPassFrequency": 80,
+        "spectralTilt": -3.5,
+        "wetDryMix": {
+          "vibrato": 1,
+          "tremolo": 1,
+          "vocalFry": 1,
+          "breathiness": 1,
+          "breathiness2": 1,
+          "reverb": 0,
+          "spectralTilt": 0.69
+        },
+        "bypassed": false
+      },
+      "createdAt": "2026-04-06T21:04:13.103Z",
+      "updatedAt": "2026-04-06T21:04:13.103Z"
     }
   ]
 }

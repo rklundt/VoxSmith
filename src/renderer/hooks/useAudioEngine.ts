@@ -211,6 +211,10 @@ export function useAudioEngine() {
     getEngine().setHighPassFrequency(hz)
   }, [getEngine])
 
+  const setSpectralTilt = useCallback((tilt: number) => {
+    getEngine().setSpectralTilt(tilt)
+  }, [getEngine])
+
   const setCompressorThreshold = useCallback((db: number) => {
     getEngine().setCompressorThreshold(db)
   }, [getEngine])
@@ -330,6 +334,7 @@ export function useAudioEngine() {
     setNoiseSuppressionAggressiveness,
     setEQBand,
     setHighPassFrequency,
+    setSpectralTilt,
     setCompressorThreshold,
     setCompressorRatio,
     setOutputGain,
